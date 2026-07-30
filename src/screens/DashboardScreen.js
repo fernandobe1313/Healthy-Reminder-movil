@@ -55,8 +55,8 @@ function buildMonthlyIncome(appointments, patients) {
   }));
 }
 
-export function DashboardScreen({ theme, setScreen, patients, appointments, setSheet, compact }) {
-  const pendingTotal = patients.reduce((sum, patient) => sum + Number(patient.balance || 0), 0);
+export function DashboardScreen({ theme, setScreen, patients, appointments, dashboardData, setSheet, compact }) {
+  const pendingTotal = Number(dashboardData?.summary?.pendingPayments ?? patients.reduce((sum, patient) => sum + Number(patient.balance || 0), 0));
   const weeklyIncome = buildWeeklyIncome(appointments);
   const monthlyIncome = buildMonthlyIncome(appointments, patients);
   const topServices = buildTopServices(appointments);
@@ -66,8 +66,8 @@ export function DashboardScreen({ theme, setScreen, patients, appointments, setS
   const maxServiceCount = Math.max(...topServices.map((item) => item.count), 1);
   const baseStats = [
     { label: 'Pacientes', value: String(patients.length), tone: colors.blue, icon: 'P', target: 'patients' },
-    { label: 'Citas hoy', value: String(appointments.length), tone: colors.purple, icon: 'C', target: 'agenda' },
-    { label: 'Ingresos', value: money(appointments.reduce((sum, appointment) => sum + estimateAppointmentRevenue(appointment), 0)), tone: colors.green, icon: '$', target: 'payments' },
+    { label: 'Citas hoy', value: String(dashboardData?.summary?.todayAppointments ?? appointments.length), tone: colors.purple, icon: 'C', target: 'agenda' },
+    { label: 'Ingresos', value: money(Number(dashboardData?.summary?.monthIncome ?? appointments.reduce((sum, appointment) => sum + estimateAppointmentRevenue(appointment), 0))), tone: colors.green, icon: '$', target: 'payments' },
     { label: 'Pendiente', value: money(pendingTotal), tone: colors.red, icon: '!', target: 'payments' },
   ];
 

@@ -203,7 +203,9 @@ export function ClinicalScreen({
   selectedTooth,
   setSelectedTooth,
   odontogramByPatient,
-  setOdontogramByPatient,
+  loadOdontogram,
+  saveOdontogramEntry,
+  deleteOdontogramEntry,
   notify,
 }) {
   const selectedPatient = patients.find((patient) => patient.id === selectedPatientId);
@@ -220,83 +222,46 @@ export function ClinicalScreen({
     setNote(selectedEntry?.note || '');
   }, [selectedPatientId, selectedTooth, selectedCondition.id, selectedEntry?.note]);
 
+  useEffect(() => {
+    if (selectedPatientId) loadOdontogram(selectedPatientId);
+  }, [selectedPatientId]);
+
   const applyCondition = (conditionId) => {
     if (!selectedPatient) {
       notify('Selecciona un paciente primero');
       return;
     }
     setDraftCondition(conditionId);
-    setOdontogramByPatient((prev) => ({
-      ...prev,
-      [selectedPatient.id]: {
-        ...(prev[selectedPatient.id] || {}),
-        [selectedTooth]: {
-          condition: conditionId,
-          note,
-          updatedAt: new Date().toISOString(),
-        },
-      },
-    }));
   };
 
-  const saveEntry = () => {
+  const saveEntry = async () => {
     if (!selectedPatient) {
       notify('Selecciona un paciente primero');
       return;
     }
-    setOdontogramByPatient((prev) => ({
-      ...prev,
-      [selectedPatient.id]: {
-        ...(prev[selectedPatient.id] || {}),
-        [selectedTooth]: {
-          condition: draftCondition,
-          note: note.trim(),
-          updatedAt: new Date().toISOString(),
-        },
-      },
-    }));
-    notify(`Pieza ${selectedTooth} registrada`);
+    await saveOdontogramEntry(selectedPatient.id, selectedTooth, draftCondition, note.trim());
   };
 
-  const clearTooth = () => {
+  const clearTooth = async () => {
     if (!selectedPatient) {
       notify('Selecciona un paciente primero');
       return;
     }
     setDraftCondition('sano');
     setNote('');
-    setOdontogramByPatient((prev) => ({
-      ...prev,
-      [selectedPatient.id]: {
-        ...(prev[selectedPatient.id] || {}),
-        [selectedTooth]: {
-          condition: 'sano',
-          note: '',
-          updatedAt: new Date().toISOString(),
-        },
-      },
-    }));
-    notify(`Pieza ${selectedTooth} marcada como sana`);
+    await saveOdontogramEntry(selectedPatient.id, selectedTooth, 'sano', '');
   };
 
-  const deleteEntry = (tooth) => {
+  const deleteEntry = async (tooth) => {
     if (!selectedPatient) {
       notify('Selecciona un paciente primero');
       return;
     }
-    setOdontogramByPatient((prev) => {
-      const patientMap = { ...(prev[selectedPatient.id] || {}) };
-      delete patientMap[tooth];
-      return {
-        ...prev,
-        [selectedPatient.id]: patientMap,
-      };
-    });
+    await deleteOdontogramEntry(selectedPatient.id, tooth);
     if (tooth === selectedTooth) {
       setDraftCondition('sano');
       setNote('');
     }
-    notify(`Registro de pieza ${tooth} eliminado`);
   };
 
   return (

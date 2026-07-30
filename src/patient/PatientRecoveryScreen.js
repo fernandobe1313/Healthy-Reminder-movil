@@ -17,6 +17,7 @@ const defaultResponse = {
   medicationTaken: false,
   comment: '',
   photoUri: '',
+  photoData: '',
 };
 
 export function PatientRecoveryScreen() {
@@ -34,15 +35,26 @@ export function PatientRecoveryScreen() {
       return;
     }
     const result = source === 'camera'
-      ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.8 })
-      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.8 });
-    if (!result.canceled && result.assets?.[0]?.uri) setResponse((prev) => ({ ...prev, photoUri: result.assets[0].uri }));
+      ? await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.65, base64: true })
+      : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.65, base64: true });
+    if (!result.canceled && result.assets?.[0]?.uri) {
+      const asset = result.assets[0];
+      setResponse((prev) => ({
+        ...prev,
+        photoUri: asset.uri,
+        photoData: asset.base64 ? `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}` : '',
+      }));
+    }
   };
 
-  const submit = () => {
-    const priority = state.submitFollowUp(modal.item.id, response);
-    setModal({ type: 'result', priority });
-    setResponse(defaultResponse);
+  const submit = async () => {
+    try {
+      const priority = await state.submitFollowUp(modal.item.id, response);
+      setModal({ type: 'result', priority });
+      setResponse(defaultResponse);
+    } catch {
+      // El contexto ya muestra el error del backend.
+    }
   };
 
   const schedule = async (item) => {

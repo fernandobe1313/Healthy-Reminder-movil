@@ -126,9 +126,9 @@ export function FollowUpsScreen({ theme, patients, followUps, onCreate, onReview
                     {response.photoUri ? <Image source={{ uri: response.photoUri }} style={{ width: '100%', height: 210, borderRadius: 18 }} resizeMode="cover" /> : null}
                   </View>
                 ))}
-                {!modal.item.reviewed ? <PrimaryButton label="Marcar como revisado" onPress={() => { onReview(modal.item.id); setModal(null); }} /> : null}
+                {!modal.item.reviewed ? <PrimaryButton label="Marcar como revisado" onPress={async () => { try { await onReview(modal.item.id); setModal(null); } catch {} }} /> : null}
                 <OutlineButton label="Contactar paciente" theme={theme} onPress={() => notify('Contacto preparado')} />
-                <OutlineButton label="Cerrar seguimiento" theme={theme} tone={colors.green} onPress={() => { onClose(modal.item.id); setModal(null); }} />
+                <OutlineButton label="Cerrar seguimiento" theme={theme} tone={colors.green} onPress={async () => { try { await onClose(modal.item.id); setModal(null); } catch {} }} />
               </>
             ) : null}
           </ScrollView>

@@ -16,6 +16,7 @@ export default function DashboardRoute() {
       setScreen={(screen) => router.replace(pathForScreen(screen))}
       patients={state.patients}
       appointments={state.appointments}
+      dashboardData={state.dashboardData}
       setSheet={state.setSheet}
       compact={width < 390}
     />

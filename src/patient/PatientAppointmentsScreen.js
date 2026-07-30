@@ -30,14 +30,18 @@ export function PatientAppointmentsScreen() {
   ));
   const selectedService = patientServices.find((service) => service.name === form.service);
 
-  const submit = () => {
+  const submit = async () => {
     if (!form.date || !form.time || !form.service) {
       state.notify('Completa fecha, hora y servicio');
       return;
     }
-    state.requestPatientAppointment(form);
-    setModal(null);
-    setFilter('Próximas');
+    try {
+      await state.requestPatientAppointment(form);
+      setModal(null);
+      setFilter('Próximas');
+    } catch {
+      // El contexto ya muestra el error del backend.
+    }
   };
 
   const addToCalendar = async (appointment) => {
@@ -102,7 +106,7 @@ export function PatientAppointmentsScreen() {
             <Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>{item.room || 'Consultorio por confirmar'} · {item.dentist || 'Dra. Mariana Torres'}</Text>
             <View style={s.row}>
               {!['Confirmada', 'Completada', 'Cancelada'].includes(item.status) ? (
-                <PrimaryButton label="Confirmar" onPress={() => state.updateAppointment(item.id, { status: 'Confirmada' })} style={{ flex: 1 }} />
+                <PrimaryButton label="Confirmar" onPress={() => state.updateAppointment(item.id, { status: 'Confirmada' }).catch(() => {})} style={{ flex: 1 }} />
               ) : null}
               {!['Completada', 'Cancelada'].includes(item.status) ? (
                 <OutlineButton label="Reprogramar" theme={state.theme} onPress={() => setModal({ type: 'reschedule', item })} style={{ flex: 1 }} />
@@ -147,9 +151,9 @@ export function PatientAppointmentsScreen() {
                 </View>
                 {!['Completada', 'Cancelada'].includes(modal.item.status) ? (
                   <>
-                    <PrimaryButton label="Confirmar asistencia" onPress={() => { state.updateAppointment(modal.item.id, { status: 'Confirmada' }); setModal(null); }} />
+                    <PrimaryButton label="Confirmar asistencia" onPress={async () => { try { await state.updateAppointment(modal.item.id, { status: 'Confirmada' }); setModal(null); } catch {} }} />
                     <OutlineButton label="Solicitar reprogramación" theme={state.theme} onPress={() => setModal({ type: 'reschedule', item: modal.item })} />
-                    <OutlineButton label="Cancelar cita" theme={state.theme} tone={colors.red} onPress={() => { state.updateAppointment(modal.item.id, { status: 'Cancelada', cancellation_reason: 'Cancelada por el paciente' }); setModal(null); }} />
+                    <OutlineButton label="Cancelar cita" theme={state.theme} tone={colors.red} onPress={async () => { try { await state.updateAppointment(modal.item.id, { status: 'Cancelada', cancellation_reason: 'Cancelada por el paciente' }); setModal(null); } catch {} }} />
                   </>
                 ) : null}
               </>
@@ -178,8 +182,9 @@ export function PatientAppointmentsScreen() {
                   label={modal?.type === 'reschedule' ? 'Enviar nueva fecha' : 'Enviar solicitud'}
                   onPress={() => {
                     if (modal?.type === 'reschedule') {
-                      state.updateAppointment(modal.item.id, { date: form.date, time: form.time, status: 'Reprogramación solicitada' });
-                      setModal(null);
+                      state.updateAppointment(modal.item.id, { date: form.date, time: form.time, status: 'Reprogramación solicitada' })
+                        .then(() => setModal(null))
+                        .catch(() => {});
                     } else submit();
                   }}
                 />

@@ -14,7 +14,9 @@ export default function ClinicalRoute() {
       selectedTooth={state.selectedTooth}
       setSelectedTooth={state.setSelectedTooth}
       odontogramByPatient={state.odontogramByPatient}
-      setOdontogramByPatient={state.setOdontogramByPatient}
+      loadOdontogram={state.loadOdontogram}
+      saveOdontogramEntry={state.saveOdontogramEntry}
+      deleteOdontogramEntry={state.deleteOdontogramEntry}
       notify={state.notify}
     />
   );

@@ -309,7 +309,7 @@ export function ActionSheet({ theme, sheet, patients, onClose, onAddPatient, onU
     return true;
   };
 
-  const submit = () => {
+  const submit = async () => {
     if (sheet?.type === 'patient' || sheet?.type === 'patientEdit') {
       if (!validatePatient()) return;
       const payload = {
@@ -325,8 +325,8 @@ export function ActionSheet({ theme, sheet, patients, onClose, onAddPatient, onU
         emergency_contact_phone: cleanPhone(form.emergency_contact_phone, form.country_phone_code),
         email: form.email?.trim() || '',
       };
-      if (sheet?.type === 'patientEdit') onUpdatePatient(sheet.data.id, payload);
-      else onAddPatient(payload);
+      if (sheet?.type === 'patientEdit') await onUpdatePatient(sheet.data.id, payload);
+      else await onAddPatient(payload);
     }
     else if (sheet?.type === 'appointment') {
       if (!validateAppointment()) return;
@@ -338,19 +338,19 @@ export function ActionSheet({ theme, sheet, patients, onClose, onAddPatient, onU
         service: form.service || form.detail || 'Revision',
         service_price: form.service_price || form.amount || '',
       };
-      onAddAppointment(payload);
+      await onAddAppointment(payload);
     }
     else if (sheet?.type === 'reminder') {
       if (!validateReminder()) return;
-      onAddReminder(form);
+      await onAddReminder(form);
     }
     else if (sheet?.type === 'payment') {
       if (!validatePayment()) return;
-      onRegisterPayment(form);
+      await onRegisterPayment(form);
     }
     else if (sheet?.type === 'paymentInstallment') {
       if (!validateInstallment()) return;
-      onAddPaymentInstallment(sheet.data.id, form);
+      await onAddPaymentInstallment(sheet.data.id, form);
     }
     else {
       onClose();
@@ -417,7 +417,7 @@ export function ActionSheet({ theme, sheet, patients, onClose, onAddPatient, onU
               </Text>
             </View>
             <Pressable
-              onPress={() => onDeletePatient(sheet.data.id)}
+              onPress={() => Promise.resolve(onDeletePatient(sheet.data.id)).catch(() => {})}
               style={({ pressed }) => [
                 styles.dangerButton,
                 { backgroundColor: `${colors.red}18`, borderColor: `${colors.red}40` },
@@ -447,7 +447,7 @@ export function ActionSheet({ theme, sheet, patients, onClose, onAddPatient, onU
                 <Text style={[styles.confirmButtonText, { color: theme.text }]}>Cancelar</Text>
               </Pressable>
               <Pressable
-                onPress={() => onDeletePayment(sheet.data.id)}
+                onPress={() => Promise.resolve(onDeletePayment(sheet.data.id)).catch(() => {})}
                 style={({ pressed }) => [
                   styles.confirmButton,
                   { backgroundColor: colors.red, borderColor: colors.red },
@@ -477,7 +477,7 @@ export function ActionSheet({ theme, sheet, patients, onClose, onAddPatient, onU
                 <Text style={[styles.confirmButtonText, { color: theme.text }]}>Cancelar</Text>
               </Pressable>
               <Pressable
-                onPress={() => onDeleteReminder(sheet.data.id)}
+                onPress={() => Promise.resolve(onDeleteReminder(sheet.data.id)).catch(() => {})}
                 style={({ pressed }) => [
                   styles.confirmButton,
                   { backgroundColor: colors.red, borderColor: colors.red },
@@ -620,14 +620,14 @@ export function ActionSheet({ theme, sheet, patients, onClose, onAddPatient, onU
             {renderEditableFields()}
             <GradientButton
               label={sheet?.type === 'appointment' ? 'Crear cita' : sheet?.type === 'patientEdit' ? 'Guardar cambios' : sheet?.type === 'payment' ? 'Registrar pago' : sheet?.type === 'paymentInstallment' ? 'Registrar abono' : sheet?.type === 'reminder' ? 'Crear recordatorio' : 'Guardar paciente'}
-              onPress={submit}
+              onPress={() => submit().catch(() => {})}
               right=""
             />
           </ScrollView>
         ) : (
           <View style={{ gap: 14 }}>
             {renderEditableFields()}
-            <GradientButton label={sheet?.type === 'payment' ? 'Confirmar pago' : 'Guardar'} onPress={submit} right="" />
+            <GradientButton label={sheet?.type === 'payment' ? 'Confirmar pago' : 'Guardar'} onPress={() => submit().catch(() => {})} right="" />
           </View>
           )}
         </View>

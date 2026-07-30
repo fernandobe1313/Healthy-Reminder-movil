@@ -21,9 +21,12 @@ export function PatientProfileScreen() {
   const [form, setForm] = useState({ ...state.currentPatient });
   const prefs = state.patientPreferences;
 
-  const save = () => {
-    state.updateCurrentPatient(form);
-    state.notify('Perfil actualizado');
+  const save = async () => {
+    try {
+      await state.updateCurrentPatient(form);
+    } catch {
+      // El contexto ya muestra el error del backend.
+    }
   };
 
   return (

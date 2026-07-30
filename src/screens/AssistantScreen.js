@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { colors } from '../theme/palette';
 import { styles } from '../styles';
+import { api } from '../api/client';
 
 export function AssistantScreen({ theme }) {
   const [messages, setMessages] = useState([
@@ -9,15 +10,22 @@ export function AssistantScreen({ theme }) {
     { id: 2, from: 'user', text: 'Prepara una nota para limpieza dental.' },
   ]);
   const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
 
-  const send = () => {
+  const send = async () => {
     if (!draft.trim()) return;
-    setMessages((prev) => [
-      ...prev,
-      { id: Date.now(), from: 'user', text: draft.trim() },
-      { id: Date.now() + 1, from: 'ai', text: 'Listo. Sugerencia: incluye motivo de consulta, hallazgos, procedimiento y proxima revision.' },
-    ]);
+    const text = draft.trim();
+    setMessages((prev) => [...prev, { id: Date.now(), from: 'user', text }]);
     setDraft('');
+    setSending(true);
+    try {
+      const result = await api.post('/ai/clinical-assistant', { message: text });
+      setMessages((prev) => [...prev, { id: Date.now() + 1, from: 'ai', text: result.response || result.message || 'Respuesta preparada.' }]);
+    } catch (error) {
+      setMessages((prev) => [...prev, { id: Date.now() + 1, from: 'ai', text: error.message }]);
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -46,8 +54,8 @@ export function AssistantScreen({ theme }) {
           placeholderTextColor={theme.soft}
           style={[styles.composerInput, { color: theme.text, backgroundColor: theme.input, borderColor: theme.line }]}
         />
-        <Pressable onPress={send} style={styles.sendButton}>
-          <Text style={styles.sendText}>{'>'}</Text>
+        <Pressable onPress={send} disabled={sending} style={[styles.sendButton, sending && { opacity: 0.6 }]}>
+          <Text style={styles.sendText}>{sending ? '…' : '>'}</Text>
         </Pressable>
       </View>
     </View>

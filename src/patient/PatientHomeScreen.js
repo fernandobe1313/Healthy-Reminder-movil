@@ -56,7 +56,7 @@ export function PatientHomeScreen() {
           </Text>
           <View style={s.row}>
             {upcoming.status !== 'Confirmada' ? (
-              <PrimaryButton label="Confirmar" onPress={() => state.updateAppointment(upcoming.id, { status: 'Confirmada' })} style={{ flex: 1 }} />
+              <PrimaryButton label="Confirmar" onPress={() => state.updateAppointment(upcoming.id, { status: 'Confirmada' }).catch(() => {})} style={{ flex: 1 }} />
             ) : null}
             <OutlineButton label="Ver detalle" theme={state.theme} onPress={() => router.replace('/patient-appointments')} style={{ flex: 1 }} />
           </View>

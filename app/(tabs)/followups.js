@@ -6,7 +6,7 @@ import { scheduleLocalReminder } from '../../src/native/native-capabilities';
 export default function FollowUpsRoute() {
   const state = useAppState();
   const createAndSchedule = async (form) => {
-    state.createFollowUp(form);
+    await state.createFollowUp(form);
     try {
       await scheduleLocalReminder({
         title: 'Es momento de revisar tu recuperación',

@@ -6,6 +6,18 @@ import { appointmentsSeed, patientsSeed, paymentsSeed, remindersSeed } from '../
 import { colors, themes } from '../theme/palette';
 import { loginMobile, logoutMobile, restoreMobileSession } from '../api/auth';
 import { api } from '../api/client';
+import { resources } from '../api/resources';
+import {
+  appointmentColor,
+  mapAppointment,
+  mapFollowUp,
+  mapPatient,
+  mapPayment,
+  mapReminder,
+  mapService,
+  toApiStatus,
+  toUiStatus,
+} from '../api/adapters';
 
 const AppStateContext = createContext(null);
 
@@ -91,7 +103,7 @@ export function AppStateProvider({ children }) {
       ],
     },
   ]);
-  const [patientDocuments] = useState([
+  const [patientDocuments, setPatientDocuments] = useState([
     { id: 1, patient_id: 1, type: 'Receta', title: 'Indicaciones posteriores a profilaxis', date: '2026-05-20', detail: 'Enjuague bucal sin alcohol, dos veces al día durante 7 días.', status: 'Vigente' },
     { id: 2, patient_id: 1, type: 'Presupuesto', title: 'Plan restaurativo', date: '2026-05-20', detail: 'Total estimado $3,750 MXN.', status: 'Aceptado' },
     { id: 3, patient_id: 1, type: 'Consentimiento', title: 'Consentimiento para restauración', date: '2026-06-18', detail: 'Documento aceptado digitalmente.', status: 'Firmado' },
@@ -146,13 +158,76 @@ export function AppStateProvider({ children }) {
     }
   });
   const [calendarEvents, setCalendarEvents] = useState({});
+  const [serviceCatalog, setServiceCatalog] = useState([]);
+  const [dashboardData, setDashboardData] = useState(null);
+  const [dataLoading, setDataLoading] = useState(false);
+
+  const applyStaffSnapshot = (snapshot) => {
+    const mappedPayments = (snapshot.paymentResult.data || []).map(mapPayment);
+    const balances = mappedPayments.reduce((output, payment) => ({
+      ...output,
+      [payment.patient_id]: Number(output[payment.patient_id] || 0) + Number(payment.pending || 0),
+    }), {});
+    setPatients((snapshot.patientResult.data || []).map((patient) => mapPatient(patient, balances)));
+    setAppointments((snapshot.appointmentResult.data || []).map(mapAppointment));
+    setPayments(mappedPayments);
+    setReminders((snapshot.reminderResult.data || []).map(mapReminder));
+    setFollowUps((snapshot.followUpResult.data || []).map(mapFollowUp));
+    setClinicalRecords(snapshot.clinicalResult.data || []);
+    setServiceCatalog((snapshot.serviceResult.data || []).map(mapService));
+    setDashboardData(snapshot.dashboardResult);
+  };
+
+  const hydrateStaffData = async ({ silent = false } = {}) => {
+    if (!silent) setDataLoading(true);
+    try {
+      const [
+        patientResult,
+        appointmentResult,
+        paymentResult,
+        reminderResult,
+        followUpResult,
+        clinicalResult,
+        serviceResult,
+        dashboardResult,
+      ] = await Promise.all([
+        resources.patients(),
+        resources.appointments(),
+        resources.payments(),
+        resources.reminders(),
+        resources.followUps(),
+        resources.clinical(),
+        resources.services(),
+        resources.dashboard(),
+      ]);
+      applyStaffSnapshot({
+        patientResult, appointmentResult, paymentResult, reminderResult,
+        followUpResult, clinicalResult, serviceResult, dashboardResult,
+      });
+    } finally {
+      if (!silent) setDataLoading(false);
+    }
+  };
 
   const hydratePatientData = async (patientId) => {
-    const [profile, appointmentResult, paymentResult, followUpResult] = await Promise.all([
+    const [
+      profile,
+      appointmentResult,
+      paymentResult,
+      followUpResult,
+      clinicalSummary,
+      serviceResult,
+      reminderResult,
+      odontogramResult,
+    ] = await Promise.all([
       api.get('/me'),
       api.get('/me/appointments'),
       api.get('/me/payments'),
       api.get('/follow-ups'),
+      api.get('/me/clinical-summary'),
+      api.get('/me/services'),
+      api.get('/me/reminders'),
+      api.get('/me/odontogram'),
     ]);
     const fullName = [profile.first_name, profile.last_name_paternal, profile.last_name_maternal].filter(Boolean).join(' ');
     const mobilePatient = {
@@ -185,7 +260,70 @@ export function AppStateProvider({ children }) {
       method: item.payment_method,
       date: item.payment_date,
     })));
-    setFollowUps(followUpResult.data || []);
+    setFollowUps((followUpResult.data || []).map(mapFollowUp));
+    setClinicalRecords((clinicalSummary.records || []).map((record) => ({
+      ...record,
+      patient_id: patientId,
+      date: record.record_date,
+    })));
+    setTreatmentPlans((clinicalSummary.treatment_plans || []).map((plan) => ({
+      ...plan,
+      patient_id: patientId,
+      name: plan.plan_name,
+      progress: plan.status === 'finalizado' ? 100 : plan.status === 'aceptado' ? 50 : 0,
+      next_step: plan.notes || 'Consulta con tu dentista',
+      started_at: plan.created_at ? String(plan.created_at).slice(0, 10) : '',
+      dentist: 'Equipo clínico',
+      items: (plan.items || []).map((item) => ({
+        ...item,
+        name: item.service_name || item.description,
+        tooth: item.tooth_number || 'General',
+        price: Number(item.total_price || 0),
+        status: toUiStatus(item.status),
+      })),
+    })));
+    const prescriptions = (clinicalSummary.prescriptions || []).map((prescription) => ({
+      id: `prescription-${prescription.id}`,
+      patient_id: patientId,
+      type: 'Receta',
+      title: prescription.diagnosis || 'Receta médica',
+      date: String(prescription.prescription_date || '').slice(0, 10),
+      detail: (prescription.items || []).map((item) => (
+        `${item.medication}${item.dosage ? ` ${item.dosage}` : ''}${item.frequency ? `, ${item.frequency}` : ''}`
+      )).join(' · ') || prescription.notes || 'Indicaciones disponibles en tu expediente.',
+      status: 'Vigente',
+    }));
+    const budgets = (clinicalSummary.treatment_plans || []).map((plan) => ({
+      id: `plan-${plan.id}`,
+      patient_id: patientId,
+      type: 'Presupuesto',
+      title: plan.plan_name,
+      date: String(plan.created_at || '').slice(0, 10),
+      detail: `Total estimado $${Number(plan.total || 0).toLocaleString('es-MX')} MXN.`,
+      status: toUiStatus(plan.status),
+    }));
+    const consents = (clinicalSummary.consents || []).map((consent) => ({
+      id: `consent-${consent.id}`,
+      patient_id: patientId,
+      type: 'Consentimiento',
+      title: consent.title,
+      date: String(consent.signed_at || consent.created_at || '').slice(0, 10),
+      detail: consent.signed_at ? 'Documento aceptado digitalmente.' : 'Pendiente de firma.',
+      status: toUiStatus(consent.status),
+    }));
+    setPatientDocuments([...prescriptions, ...budgets, ...consents]);
+    setReminders((reminderResult.data || []).map((reminder) => mapReminder({
+      ...reminder,
+      first_name: profile.first_name,
+      last_name_paternal: profile.last_name_paternal,
+    })));
+    setOdontogramByPatient({
+      [patientId]: (odontogramResult.data || []).reduce((entries, entry) => ({
+        ...entries,
+        [String(entry.tooth_number)]: entry,
+      }), {}),
+    });
+    setServiceCatalog((serviceResult.data || []).map(mapService));
   };
 
   useEffect(() => {
@@ -194,9 +332,11 @@ export function AppStateProvider({ children }) {
         if (!user) return;
         setCurrentUser(user);
         setCurrentRole(user.role);
-        if (user.patient_id) {
+        if (user.role === 'patient' && user.patient_id) {
           setCurrentPatientId(user.patient_id);
           await hydratePatientData(user.patient_id);
+        } else if (user.role === 'dentist') {
+          await hydrateStaffData();
         }
         setLoggedIn(true);
       })
@@ -228,7 +368,7 @@ export function AppStateProvider({ children }) {
     if (user.role === 'patient') {
       setCurrentPatientId(user.patient_id);
       await hydratePatientData(user.patient_id);
-    }
+    } else await hydrateStaffData();
     setLoggedIn(true);
     return user;
   };
@@ -240,96 +380,139 @@ export function AppStateProvider({ children }) {
     setSheet(null);
   };
 
-  const updateAppointment = (id, changes = {}) => {
-    setAppointments((prev) => prev.map((appointment) => (
-      appointment.id === id
-        ? {
-            ...appointment,
-            ...changes,
-            color: changes.status === 'Confirmada'
-              ? colors.blue
-              : changes.status === 'Completada'
-                ? colors.green
-                : changes.status === 'Cancelada'
-                  ? colors.red
-                  : appointment.color,
-          }
-        : appointment
-    )));
-    notify(changes.status ? `Cita ${changes.status.toLowerCase()}` : 'Cita actualizada');
+  const updateAppointment = async (id, changes = {}) => {
+    try {
+      const payload = { ...changes, ...(changes.status ? { status: toApiStatus(changes.status) } : {}) };
+      const updated = currentRole === 'patient'
+        ? await api.put(`/me/appointments/${id}`, payload)
+        : await resources.updateAppointment(id, payload);
+      setAppointments((prev) => prev.map((appointment) => (
+        appointment.id === id
+          ? { ...appointment, ...changes, ...updated, status: changes.status || appointment.status, color: appointmentColor(changes.status || updated.status) }
+          : appointment
+      )));
+      notify(changes.status ? `Cita ${changes.status.toLowerCase()}` : 'Cita actualizada');
+      return updated;
+    } catch (error) {
+      notify(error.message);
+      throw error;
+    }
   };
 
-  const requestPatientAppointment = (form = {}) => {
+  const requestPatientAppointment = async (form = {}) => {
     const patient = patients.find((item) => item.id === currentPatientId);
     if (!patient) return;
-    addAppointment({
-      patient_id: patient.id,
-      name: patient.name,
-      date: form.date,
-      start_time: form.time,
-      end_time: form.end_time || '',
-      service: form.service || 'Consulta general',
-      detail: form.reason || '',
-      status: 'Solicitada',
-      room: 'Por asignar',
-      type: 'Solicitud del paciente',
-    });
+    try {
+      const service = serviceCatalog.find((item) => item.id === form.service_id || item.name === form.service);
+      const created = await api.post('/me/appointment-requests', {
+        appointment_date: form.date,
+        start_time: form.time,
+        end_time: form.end_time || (() => {
+          const [hours, minutes] = String(form.time || '09:00').split(':').map(Number);
+          const date = new Date(2000, 0, 1, hours, minutes + Number(service?.duration || 30));
+          return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+        })(),
+        duration: form.duration || service?.duration || 30,
+        service_id: service?.id || null,
+        observations: form.reason || '',
+      });
+      setAppointments((prev) => [mapAppointment({
+        ...created,
+        first_name: patient.first_name,
+        last_name_paternal: patient.last_name_paternal,
+        service_name: service?.name,
+      }), ...prev]);
+      notify('Solicitud de cita enviada');
+      return created;
+    } catch (error) {
+      notify(error.message);
+      throw error;
+    }
   };
 
-  const updateCurrentPatient = (changes = {}) => {
-    updatePatient(currentPatientId, changes);
+  const updateCurrentPatient = async (changes = {}) => {
+    try {
+      const payload = { ...changes, phone_primary: changes.phone_primary || changes.phone };
+      await api.put('/me', payload);
+      setPatients((prev) => prev.map((patient) => patient.id === currentPatientId ? mapPatient({ ...patient, ...payload }) : patient));
+      notify('Perfil actualizado');
+    } catch (error) {
+      notify(error.message);
+      throw error;
+    }
   };
 
-  const createFollowUp = (form = {}) => {
+  const createFollowUp = async (form = {}) => {
     const patient = patients.find((item) => item.id === form.patient_id);
     if (!patient) {
       notify('Selecciona un paciente');
       return;
     }
-    setFollowUps((prev) => [{
-      id: Date.now(),
-      patient_id: patient.id,
-      patient: patient.name,
-      procedure: form.procedure || 'Procedimiento dental',
-      treatment_date: form.treatment_date || new Date().toISOString().slice(0, 10),
-      next_check_at: form.next_check_at || new Date(Date.now() + 86400000).toISOString(),
-      status: 'Pendiente',
-      instructions: form.instructions || 'Sigue las indicaciones de tu dentista.',
-      medication: form.medication || 'Sin medicamento registrado.',
-      responses: [],
-      reviewed: false,
-    }, ...prev]);
-    notify('Seguimiento programado');
+    try {
+      const created = await resources.createFollowUp({
+        patient_id: patient.id,
+        procedure_name: form.procedure || 'Procedimiento dental',
+        treatment_date: form.treatment_date || new Date().toISOString().slice(0, 10),
+        next_check_at: form.next_check_at || new Date(Date.now() + 86400000).toISOString(),
+        instructions: form.instructions || 'Sigue las indicaciones de tu dentista.',
+        medication: form.medication || 'Sin medicamento registrado.',
+      });
+      setFollowUps((prev) => [mapFollowUp({
+        ...created,
+        first_name: patient.first_name,
+        last_name_paternal: patient.last_name_paternal,
+        responses: [],
+      }), ...prev]);
+      notify('Seguimiento programado');
+      return created;
+    } catch (error) {
+      notify(error.message);
+      throw error;
+    }
   };
 
-  const submitFollowUp = (followUpId, response = {}) => {
-    const pain = Number(response.pain || 0);
-    const warning = pain >= 7 || response.fever || (response.swelling && response.bleeding);
-    const priority = warning ? 'Alta' : pain >= 4 || response.swelling || response.bleeding ? 'Media' : 'Baja';
-    setFollowUps((prev) => prev.map((item) => item.id === followUpId ? {
-      ...item,
-      status: warning ? 'Alerta' : 'Respondido',
-      reviewed: false,
-      responses: [...(item.responses || []), { ...response, id: Date.now(), date: new Date().toISOString(), pain, priority }],
-    } : item));
-    notify(warning ? 'Reporte enviado para revisión prioritaria' : 'Seguimiento enviado');
-    return priority;
+  const submitFollowUp = async (followUpId, response = {}) => {
+    try {
+      const created = await resources.submitFollowUp(followUpId, {
+        ...response,
+        medication_taken: response.medicationTaken,
+        photo_url: response.photoData || '',
+      });
+      const mapped = mapFollowUp({ responses: [created] }).responses[0];
+      setFollowUps((prev) => prev.map((item) => item.id === followUpId ? {
+        ...item,
+        status: created.priority === 'alta' ? 'Alerta' : 'Respondido',
+        reviewed: false,
+        responses: [...(item.responses || []), mapped],
+      } : item));
+      notify(created.priority === 'alta' ? 'Reporte enviado para revisión prioritaria' : 'Seguimiento enviado');
+      return mapped.priority;
+    } catch (error) {
+      notify(error.message);
+      throw error;
+    }
   };
 
-  const reviewFollowUp = (followUpId, note = '') => {
-    setFollowUps((prev) => prev.map((item) => item.id === followUpId ? {
-      ...item,
-      reviewed: true,
-      status: item.status === 'Alerta' ? 'Revisado' : item.status,
-      dentist_note: note || 'Revisado por el equipo dental.',
-      reviewed_at: new Date().toISOString(),
-    } : item));
-    notify('Seguimiento marcado como revisado');
+  const reviewFollowUp = async (followUpId, note = '') => {
+    try {
+      await resources.reviewFollowUp(followUpId, { status: 'revisado', dentist_note: note || 'Revisado por el equipo dental.' });
+      setFollowUps((prev) => prev.map((item) => item.id === followUpId ? { ...item, reviewed: true, status: 'Revisado', dentist_note: note } : item));
+      notify('Seguimiento marcado como revisado');
+    } catch (error) {
+      notify(error.message);
+      throw error;
+    }
   };
 
-  const closeFollowUp = (followUpId) => {
-    setFollowUps((prev) => prev.map((item) => item.id === followUpId ? { ...item, status: 'Cerrado', reviewed: true } : item));
-    notify('Seguimiento cerrado');
+  const closeFollowUp = async (followUpId) => {
+    try {
+      await resources.reviewFollowUp(followUpId, { status: 'cerrado' });
+      setFollowUps((prev) => prev.map((item) => item.id === followUpId ? { ...item, status: 'Cerrado', reviewed: true } : item));
+      notify('Seguimiento cerrado');
+    } catch (error) {
+      notify(error.message);
+      throw error;
+    }
   };
 
   const pendingPaymentsTotal = payments.reduce((sum, payment) => sum + Number(payment.pending || 0), 0);
@@ -385,116 +568,114 @@ export function AppStateProvider({ children }) {
     setSheet({ type: 'notifications', data: { items: notificationItems } });
   };
 
-  const addPatient = (form = {}) => {
-    const { name, phone, tag } = patientListFields(form);
-    setPatients((prev) => [
-      { ...form, id: Date.now(), name, phone, next: 'Sin cita', balance: 0, tag },
-      ...prev,
-    ]);
-    setSheet(null);
-    notify('Paciente agregado');
-  };
-
-  const updatePatient = (id, form = {}) => {
-    const listFields = patientListFields(form);
-    const previousPatient = patients.find((patient) => patient.id === id);
-    setPatients((prev) =>
-      prev.map((patient) => (
-        patient.id === id
-          ? { ...patient, ...form, ...listFields, id: patient.id, next: form.next || patient.next, balance: form.balance ?? patient.balance }
-          : patient
-      ))
-    );
-    if (previousPatient && previousPatient.name !== listFields.name) {
-      setAppointments((prev) =>
-        prev.map((appointment) => (
-          appointment.patient.toLowerCase() === previousPatient.name.toLowerCase()
-            ? { ...appointment, patient: listFields.name }
-            : appointment
-        ))
-      );
+  const addPatient = async (form = {}) => {
+    try {
+      const created = await resources.createPatient(form);
+      setPatients((prev) => [mapPatient(created), ...prev]);
+      setSheet(null);
+      notify('Paciente agregado');
+      return created;
+    } catch (error) {
+      notify(error.message);
+      throw error;
     }
-    setPayments((prev) =>
-      prev.map((payment) => (
-        payment.patient_id === id || payment.patient.toLowerCase() === previousPatient?.name?.toLowerCase()
-          ? { ...payment, patient: listFields.name, phone: listFields.phone, tag: listFields.tag }
-          : payment
-      ))
-    );
-    setSheet(null);
-    notify('Expediente actualizado');
   };
 
-  const deletePatient = (id) => {
-    const removedPatient = patients.find((patient) => patient.id === id);
-    setPatients((prev) => prev.filter((patient) => patient.id !== id));
-    setOdontogramByPatient((prev) => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
-    if (selectedClinicalPatientId === id) setSelectedClinicalPatientId('');
-    if (removedPatient) {
-      setAppointments((prev) =>
-        prev.filter((appointment) => appointment.patient.toLowerCase() !== removedPatient.name.toLowerCase())
-      );
-      setPayments((prev) =>
-        prev.filter((payment) => payment.patient_id !== id && payment.patient.toLowerCase() !== removedPatient.name.toLowerCase())
-      );
+  const updatePatient = async (id, form = {}) => {
+    try {
+      const updated = await resources.updatePatient(id, form);
+      const mapped = mapPatient(updated);
+      setPatients((prev) => prev.map((patient) => patient.id === id ? { ...patient, ...mapped, balance: patient.balance, next: patient.next } : patient));
+      setAppointments((prev) => prev.map((appointment) => appointment.patient_id === id ? { ...appointment, patient: mapped.name, name: mapped.name } : appointment));
+      setPayments((prev) => prev.map((payment) => payment.patient_id === id ? { ...payment, patient: mapped.name, phone: mapped.phone, tag: mapped.tag } : payment));
+      setSheet(null);
+      notify('Expediente actualizado');
+      return updated;
+    } catch (error) {
+      notify(error.message);
+      throw error;
     }
-    setSheet(null);
-    notify('Paciente eliminado');
   };
 
-  const addAppointment = (form = {}) => {
-    const time = form.start_time?.trim() || form.time?.trim() || '09:00';
-    const patient = form.name?.trim() || 'Nuevo Paciente';
-    const service = form.service?.trim() || form.detail?.trim() || 'Revision';
-    const status = form.status?.trim() || 'Nueva';
-    setAppointments((prev) => [
-      {
-        ...form,
-        id: Date.now(),
-        time,
-        patient,
-        service,
-        status,
-        color: status === 'Confirmada' ? colors.blue : status === 'Completada' ? colors.green : status === 'Cancelada' ? colors.red : colors.purple,
-      },
-      ...prev,
-    ]);
-    setPatients((prev) =>
-      prev.map((item) => (
-        item.id === form.patient_id || item.name.toLowerCase() === patient.toLowerCase()
-          ? { ...item, next: form.date ? `${form.date} ${time}` : time }
-          : item
-      ))
-    );
-    setSheet(null);
-    notify('Cita programada');
+  const deletePatient = async (id) => {
+    try {
+      await resources.deletePatient(id);
+      setPatients((prev) => prev.filter((patient) => patient.id !== id));
+      setAppointments((prev) => prev.filter((appointment) => appointment.patient_id !== id));
+      setPayments((prev) => prev.filter((payment) => payment.patient_id !== id));
+      setOdontogramByPatient((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      if (selectedClinicalPatientId === id) setSelectedClinicalPatientId('');
+      setSheet(null);
+      notify('Paciente eliminado');
+    } catch (error) {
+      notify(error.message);
+      throw error;
+    }
   };
 
-  const addReminder = (form = {}) => {
-    const type = form.type?.trim() || 'Recordatorio 24h antes';
-    const patient = form.patient?.trim() || 'Paciente';
-    const title = form.title?.trim() || (type === 'Recordatorio de pago' ? 'Recordatorio de pago' : `Recordatorio para ${patient}`);
-    const area = type.includes('pago') || type.includes('Pago') ? 'Finanzas' : type.includes('clinico') || type.includes('Clinico') ? 'Clinico' : 'Agenda';
-    setReminders((prev) => [
-      {
-        ...form,
-        id: Date.now(),
-        title,
-        patient,
-        phone: form.phone?.trim() || '',
-        type,
-        area,
-        status: 'Pendiente',
-        message: form.message?.trim() || title,
-      },
-      ...prev,
-    ]);
-    setSheet(null);
-    notify('Recordatorio creado');
+  const addAppointment = async (form = {}) => {
+    try {
+      const patient = patients.find((item) => item.id === form.patient_id);
+      const service = serviceCatalog.find((item) => item.id === form.service_id || item.name === form.service);
+      const created = await resources.createAppointment({
+        patient_id: form.patient_id,
+        service_id: service?.id || null,
+        appointment_date: form.date,
+        start_time: form.start_time || form.time,
+        end_time: form.end_time,
+        duration: Number(form.duration) || 30,
+        appointment_type: form.type || 'consulta',
+        office_unit: form.room || 'Consultorio 1',
+        status: toApiStatus(form.status || 'pendiente'),
+        observations: form.observations || '',
+        internal_notes: form.internal_notes || '',
+      });
+      setAppointments((prev) => [mapAppointment({
+        ...created,
+        first_name: patient?.first_name,
+        last_name_paternal: patient?.last_name_paternal,
+        service_name: service?.name,
+      }), ...prev]);
+      setSheet(null);
+      notify('Cita programada');
+      return created;
+    } catch (error) {
+      notify(error.message);
+      throw error;
+    }
+  };
+
+  const addReminder = async (form = {}) => {
+    try {
+      const patient = patients.find((item) => item.id === form.patient_id);
+      const scheduledAt = form.date
+        ? new Date(`${form.date}T${form.time || '09:00'}:00`).toISOString()
+        : new Date().toISOString();
+      const created = await resources.createReminder({
+        patient_id: form.patient_id,
+        appointment_id: form.appointment_id || null,
+        reminder_type: form.type || 'cita',
+        channel: form.channel || 'whatsapp',
+        phone: form.phone || patient?.phone || '',
+        message: form.message,
+        scheduled_at: scheduledAt,
+      });
+      setReminders((prev) => [mapReminder({
+        ...created,
+        first_name: patient?.first_name,
+        last_name_paternal: patient?.last_name_paternal,
+      }), ...prev]);
+      setSheet(null);
+      notify('Recordatorio creado');
+      return created;
+    } catch (error) {
+      notify(error.message);
+      throw error;
+    }
   };
 
   const sendReminder = async (id) => {
@@ -516,13 +697,15 @@ export function AppStateProvider({ children }) {
     notify('WhatsApp abierto');
   };
 
-  const markReminderSent = (id) => {
-    setReminders((prev) =>
-      prev.map((reminder) => (
-        reminder.id === id ? { ...reminder, status: 'Enviado', sent_at: new Date().toISOString() } : reminder
-      ))
-    );
-    notify('Recordatorio marcado como enviado');
+  const markReminderSent = async (id) => {
+    try {
+      const updated = await resources.markReminderSent(id);
+      setReminders((prev) => prev.map((reminder) => reminder.id === id ? { ...reminder, ...updated, status: 'Enviado' } : reminder));
+      notify('Recordatorio marcado como enviado');
+    } catch (error) {
+      notify(error.message);
+      throw error;
+    }
   };
 
   const copyReminder = async (id) => {
@@ -532,114 +715,152 @@ export function AppStateProvider({ children }) {
     notify('Recordatorio copiado');
   };
 
-  const deleteReminder = (id) => {
-    setReminders((prev) => prev.filter((reminder) => reminder.id !== id));
-    setSheet(null);
-    notify('Recordatorio eliminado');
+  const deleteReminder = async (id) => {
+    try {
+      await resources.deleteReminder(id);
+      setReminders((prev) => prev.filter((reminder) => reminder.id !== id));
+      setSheet(null);
+      notify('Recordatorio eliminado');
+    } catch (error) {
+      notify(error.message);
+      throw error;
+    }
   };
 
-  const refreshReminders = () => {
-    setReminders((prev) =>
-      [...prev].sort((a, b) => `${a.date || ''} ${a.time || ''}`.localeCompare(`${b.date || ''} ${b.time || ''}`))
-    );
-    notify('Recordatorios actualizados');
+  const refreshReminders = async () => {
+    try {
+      const result = await resources.reminders();
+      setReminders((result.data || []).map(mapReminder));
+      notify('Recordatorios actualizados');
+    } catch (error) {
+      notify(error.message);
+    }
   };
 
-  const registerPayment = (form = {}) => {
+  const loadOdontogram = async (patientId) => {
+    if (!patientId) return;
+    try {
+      const result = await resources.odontogram(patientId);
+      const toothMap = {};
+      for (const entry of result.data || []) {
+        toothMap[String(entry.tooth_number)] = {
+          id: entry.id,
+          condition: entry.condition,
+          note: entry.description || '',
+          updatedAt: entry.updated_at || entry.created_at,
+        };
+      }
+      setOdontogramByPatient((prev) => ({ ...prev, [patientId]: toothMap }));
+    } catch (error) {
+      notify(error.message);
+    }
+  };
+
+  const saveOdontogramEntry = async (patientId, tooth, condition, note = '') => {
+    const existing = odontogramByPatient[patientId]?.[String(tooth)];
+    try {
+      const saved = existing?.id
+        ? await resources.updateOdontogram(existing.id, { condition, description: note })
+        : await resources.saveOdontogram({ patient_id: patientId, tooth_number: Number(tooth), condition, description: note });
+      setOdontogramByPatient((prev) => ({
+        ...prev,
+        [patientId]: {
+          ...(prev[patientId] || {}),
+          [String(tooth)]: { id: saved.id, condition: saved.condition, note: saved.description || '', updatedAt: saved.updated_at || saved.created_at },
+        },
+      }));
+      notify(`Pieza ${tooth} registrada`);
+      return saved;
+    } catch (error) {
+      notify(error.message);
+      throw error;
+    }
+  };
+
+  const deleteOdontogramEntry = async (patientId, tooth) => {
+    const existing = odontogramByPatient[patientId]?.[String(tooth)];
+    try {
+      if (existing?.id) await resources.deleteOdontogram(existing.id);
+      setOdontogramByPatient((prev) => {
+        const patientMap = { ...(prev[patientId] || {}) };
+        delete patientMap[String(tooth)];
+        return { ...prev, [patientId]: patientMap };
+      });
+      notify(`Registro de pieza ${tooth} eliminado`);
+    } catch (error) {
+      notify(error.message);
+      throw error;
+    }
+  };
+
+  const registerPayment = async (form = {}) => {
     const total = parseMoney(form.total_amount);
     const paid = parseMoney(form.paid_amount);
-    const pending = Math.max(0, total - paid);
     const selectedPatient = patients.find((patient) => patient.id === form.patient_id || patient.name === form.patient);
-    const record = {
-      id: Date.now(),
-      patient_id: selectedPatient?.id || form.patient_id || Date.now(),
-      patient: form.patient?.trim() || selectedPatient?.name || 'Paciente',
-      phone: selectedPatient?.phone || form.phone || '',
-      tag: form.tag || selectedPatient?.tag || 'Tratamiento',
-      total,
-      paid,
-      pending,
-      method: form.method || 'Efectivo',
-      date: form.date,
-      reference: form.reference?.trim() || '',
-      notes: form.notes?.trim() || '',
-      status: paymentStatus(total, paid),
-      history: paid > 0 ? [{
-        id: `${Date.now()}-initial`,
-        amount: paid,
-        method: form.method || 'Efectivo',
-        date: form.date,
-        notes: form.reference?.trim() || 'Pago inicial',
-      }] : [],
-    };
-    const nextPayments = [record, ...payments];
-    const nextBalance = pendingForPatient(nextPayments, record.patient_id, record.patient);
-    setPayments(nextPayments);
-    setPatients((prev) =>
-      prev.map((patient) => (
-        patient.id === record.patient_id || patient.name.toLowerCase() === record.patient.toLowerCase()
-          ? { ...patient, balance: nextBalance }
-          : patient
-      ))
-    );
-    setSheet(null);
-    notify(`Pago de ${formatMoney(total)} registrado`);
+    try {
+      const created = await resources.createPayment({
+        patient_id: selectedPatient?.id || form.patient_id,
+        total_amount: total,
+        amount_paid: paid,
+        payment_method: form.method || 'efectivo',
+        payment_reference: form.reference || '',
+        payment_date: form.date,
+        notes: form.notes || '',
+      });
+      const mapped = mapPayment({
+        ...created,
+        first_name: selectedPatient?.first_name,
+        last_name_paternal: selectedPatient?.last_name_paternal,
+      });
+      setPayments((prev) => [mapped, ...prev]);
+      setPatients((prev) => prev.map((patient) => patient.id === mapped.patient_id ? { ...patient, balance: Number(patient.balance || 0) + mapped.pending } : patient));
+      setSheet(null);
+      notify(`Pago de ${formatMoney(total)} registrado`);
+      return created;
+    } catch (error) {
+      notify(error.message);
+      throw error;
+    }
   };
 
-  const addPaymentInstallment = (paymentId, form = {}) => {
+  const addPaymentInstallment = async (paymentId, form = {}) => {
     const target = payments.find((payment) => payment.id === paymentId);
     if (!target) return;
     const amount = Math.min(parseMoney(form.amount), Number(target.pending || 0));
-    const paid = Math.min(Number(target.total || 0), Number(target.paid || 0) + amount);
-    const pending = Math.max(0, Number(target.total || 0) - paid);
-    const updated = {
-      ...target,
-      paid,
-      pending,
-      method: form.method || target.method,
-      status: paymentStatus(target.total, paid),
-      history: [
-        ...(target.history || []),
-        {
-          id: `${Date.now()}-abono`,
-          amount,
-          method: form.method || 'Efectivo',
-          date: form.date,
-          notes: form.notes?.trim() || 'Abono',
-        },
-      ],
-    };
-    const nextPayments = payments.map((payment) => (payment.id === paymentId ? updated : payment));
-    const nextBalance = pendingForPatient(nextPayments, target.patient_id, target.patient);
-    setPayments(nextPayments);
-    setPatients((prev) =>
-      prev.map((patient) => (
-        patient.id === target.patient_id || patient.name.toLowerCase() === target.patient.toLowerCase()
-          ? { ...patient, balance: nextBalance }
-          : patient
-      ))
-    );
-    setSheet(null);
-    notify(`Abono de ${formatMoney(amount)} registrado`);
+    try {
+      const updated = await resources.addPayment(paymentId, {
+        amount,
+        payment_method: form.method || 'efectivo',
+        payment_reference: form.reference || '',
+        notes: form.notes || '',
+      });
+      const mapped = mapPayment({ ...updated, first_name: target.patient.split(' ')[0], last_name_paternal: target.patient.split(' ').slice(1).join(' ') });
+      setPayments((prev) => prev.map((payment) => payment.id === paymentId ? mapped : payment));
+      setPatients((prev) => prev.map((patient) => patient.id === target.patient_id ? { ...patient, balance: Math.max(0, Number(patient.balance || 0) - amount) } : patient));
+      setSheet(null);
+      notify(`Abono de ${formatMoney(amount)} registrado`);
+      return updated;
+    } catch (error) {
+      notify(error.message);
+      throw error;
+    }
   };
 
-  const deletePayment = (paymentId) => {
+  const deletePayment = async (paymentId) => {
     const target = payments.find((payment) => payment.id === paymentId);
     if (!target) return;
-    const nextPayments = payments.filter((payment) => payment.id !== paymentId);
-    const remainingPending = nextPayments
-      .filter((payment) => payment.patient_id === target.patient_id || payment.patient.toLowerCase() === target.patient.toLowerCase())
-      .reduce((sum, payment) => sum + Number(payment.pending || 0), 0);
-    setPayments(nextPayments);
-    setPatients((prev) =>
-      prev.map((patient) => (
-        patient.id === target.patient_id || patient.name.toLowerCase() === target.patient.toLowerCase()
-          ? { ...patient, balance: remainingPending }
-          : patient
-      ))
-    );
-    setSheet(null);
-    notify('Pago eliminado');
+    try {
+      await resources.deletePayment(paymentId);
+      const nextPayments = payments.filter((payment) => payment.id !== paymentId);
+      const remainingPending = nextPayments.filter((payment) => payment.patient_id === target.patient_id).reduce((sum, payment) => sum + Number(payment.pending || 0), 0);
+      setPayments(nextPayments);
+      setPatients((prev) => prev.map((patient) => patient.id === target.patient_id ? { ...patient, balance: remainingPending } : patient));
+      setSheet(null);
+      notify('Pago eliminado');
+    } catch (error) {
+      notify(error.message);
+      throw error;
+    }
   };
 
   const value = useMemo(() => ({
@@ -649,6 +870,9 @@ export function AppStateProvider({ children }) {
     loggedIn,
     authLoading,
     currentUser,
+    dataLoading,
+    dashboardData,
+    serviceCatalog,
     currentRole,
     currentPatientId,
     currentPatient: patients.find((patient) => patient.id === currentPatientId) || null,
@@ -674,6 +898,9 @@ export function AppStateProvider({ children }) {
     setSelectedTooth,
     odontogramByPatient,
     setOdontogramByPatient,
+    loadOdontogram,
+    saveOdontogramEntry,
+    deleteOdontogramEntry,
     clinicalRecords,
     setClinicalRecords,
     treatmentPlans,
@@ -710,12 +937,16 @@ export function AppStateProvider({ children }) {
     markReminderSent,
     copyReminder,
     refreshReminders,
+    hydrateStaffData,
   }), [
     theme,
     themeMode,
     loggedIn,
     authLoading,
     currentUser,
+    dataLoading,
+    dashboardData,
+    serviceCatalog,
     currentRole,
     currentPatientId,
     selectedDay,

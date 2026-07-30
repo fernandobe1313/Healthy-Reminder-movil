@@ -127,6 +127,17 @@ export function PatientAppointmentsScreen() {
               <StatusChip label={item.status} tone={toneForStatus(item.status)} />
             </View>
             <Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>{item.room || 'Consultorio por confirmar'} · {item.dentist || 'Dra. Mariana Torres'}</Text>
+            {item.is_booking_request ? (
+              <View style={[s.card, { marginTop: 10, backgroundColor: state.theme.chip, borderColor: item.status === 'Solicitud rechazada' ? colors.red : colors.blue }]}>
+                <Text selectable style={[s.cardTitle, { color: item.status === 'Solicitud rechazada' ? colors.red : colors.blue }]}>
+                  {item.status}
+                </Text>
+                <Text selectable style={[s.cardCopy, { color: state.theme.text }]}>
+                  Esta solicitud todavía no ocupa un horario en la agenda.
+                </Text>
+                {item.review_note ? <Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>Respuesta: {item.review_note}</Text> : null}
+              </View>
+            ) : null}
             {item.reschedule_request_status === 'pendiente' ? (
               <View style={[s.card, { marginTop: 10, backgroundColor: state.theme.chip, borderColor: colors.amber }]}>
                 <Text selectable style={[s.cardTitle, { color: colors.amber }]}>Reprogramación pendiente</Text>
@@ -147,14 +158,14 @@ export function PatientAppointmentsScreen() {
                 ) : null}
               </View>
             ) : null}
-            <View style={s.row}>
+            {!item.is_booking_request ? <View style={s.row}>
               {!['Confirmada', 'Completada', 'Cancelada'].includes(item.status) ? (
                 <PrimaryButton label="Confirmar" onPress={() => state.updateAppointment(item.id, { status: 'Confirmada' }).catch(() => {})} style={{ flex: 1 }} />
               ) : null}
               {!['Completada', 'Cancelada'].includes(item.status) && item.reschedule_request_status !== 'pendiente' ? (
                 <OutlineButton label="Solicitar cambio" theme={state.theme} onPress={() => openRescheduleRequest(item)} style={{ flex: 1 }} />
               ) : null}
-            </View>
+            </View> : null}
           </Pressable>
         )) : (
           <EmptyState title={`Sin citas ${filter.toLowerCase()}`} copy="Cuando exista información aparecerá aquí automáticamente." theme={state.theme} />
@@ -181,7 +192,11 @@ export function PatientAppointmentsScreen() {
                   <Text selectable style={[s.cardCopy, { color: state.theme.text }]}>Dentista: {modal.item.dentist || 'Dra. Mariana Torres'}</Text>
                   <Text selectable style={[s.cardCopy, { color: state.theme.text }]}>Ubicación: {modal.item.room || 'Consultorio 1'}</Text>
                 </View>
-                <Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>Llega 10 minutos antes. Si tomas medicamentos, lleva una lista actualizada.</Text>
+                <Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>
+                  {modal.item.is_booking_request
+                    ? 'El dentista debe aprobar esta solicitud antes de que se convierta en una cita.'
+                    : 'Llega 10 minutos antes. Si tomas medicamentos, lleva una lista actualizada.'}
+                </Text>
                 {modal.item.reschedule_request_status === 'pendiente' ? (
                   <View style={[s.card, { backgroundColor: state.theme.chip, borderColor: colors.amber }]}>
                     <Text selectable style={[s.cardTitle, { color: colors.amber }]}>Solicitud pendiente de respuesta</Text>
@@ -193,7 +208,7 @@ export function PatientAppointmentsScreen() {
                     </Text>
                   </View>
                 ) : null}
-                <View style={s.row}>
+                {!modal.item.is_booking_request ? <View style={s.row}>
                   <OutlineButton
                     label={state.calendarEvents[modal.item.id] ? 'En calendario' : 'Agregar al calendario'}
                     theme={state.theme}
@@ -202,8 +217,8 @@ export function PatientAppointmentsScreen() {
                     style={{ flex: 1 }}
                   />
                   <OutlineButton label="Crear recordatorio" theme={state.theme} onPress={() => scheduleAppointmentReminder(modal.item)} style={{ flex: 1 }} />
-                </View>
-                {!['Completada', 'Cancelada'].includes(modal.item.status) ? (
+                </View> : null}
+                {!modal.item.is_booking_request && !['Completada', 'Cancelada'].includes(modal.item.status) ? (
                   <>
                     <PrimaryButton label="Confirmar asistencia" onPress={async () => { try { await state.updateAppointment(modal.item.id, { status: 'Confirmada' }); setModal(null); } catch {} }} />
                     {modal.item.reschedule_request_status !== 'pendiente' ? (

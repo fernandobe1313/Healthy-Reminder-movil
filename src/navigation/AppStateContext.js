@@ -213,6 +213,7 @@ export function AppStateProvider({ children }) {
     const [
       profile,
       appointmentResult,
+      bookingRequestResult,
       paymentResult,
       followUpResult,
       clinicalSummary,
@@ -222,6 +223,7 @@ export function AppStateProvider({ children }) {
     ] = await Promise.all([
       api.get('/me'),
       api.get('/me/appointments'),
+      api.get('/me/appointment-requests'),
       api.get('/me/payments'),
       api.get('/follow-ups'),
       api.get('/me/clinical-summary'),
@@ -240,13 +242,28 @@ export function AppStateProvider({ children }) {
       balance: (paymentResult.data || []).reduce((sum, item) => sum + Number(item.remaining_balance || 0), 0),
     };
     setPatients((current) => [mobilePatient, ...current.filter((item) => item.id !== patientId)]);
-    setAppointments((appointmentResult.data || []).map((item) => mapAppointment({
+    const confirmedAppointments = (appointmentResult.data || []).map((item) => mapAppointment({
       ...item,
       patient_id: patientId,
       first_name: profile.first_name,
       last_name_paternal: profile.last_name_paternal,
       last_name_maternal: profile.last_name_maternal,
-    })));
+    }));
+    const bookingRequests = (bookingRequestResult.data || []).map((item) => ({
+      ...item,
+      id: `booking-request-${item.id}`,
+      request_id: item.id,
+      is_booking_request: true,
+      patient_id: patientId,
+      patient: fullName,
+      date: item.requested_date,
+      time: item.requested_start_time,
+      end_time: item.requested_end_time,
+      service: item.service_name || 'Consulta solicitada',
+      room: 'Pendiente de aprobación',
+      status: item.status === 'rechazada' ? 'Solicitud rechazada' : 'Solicitud pendiente',
+    }));
+    setAppointments([...bookingRequests, ...confirmedAppointments]);
     setPayments((paymentResult.data || []).map((item) => ({
       ...item,
       patient_id: patientId,
@@ -413,13 +430,21 @@ export function AppStateProvider({ children }) {
         service_id: service?.id || null,
         observations: form.reason || '',
       });
-      setAppointments((prev) => [mapAppointment({
+      setAppointments((prev) => [{
         ...created,
-        first_name: patient.first_name,
-        last_name_paternal: patient.last_name_paternal,
-        service_name: service?.name,
-      }), ...prev]);
-      notify('Solicitud de cita enviada');
+        id: `booking-request-${created.id}`,
+        request_id: created.id,
+        is_booking_request: true,
+        patient_id: patient.id,
+        patient: patient.name,
+        date: created.requested_date,
+        time: created.requested_start_time,
+        end_time: created.requested_end_time,
+        service: created.service_name || service?.name || 'Consulta solicitada',
+        room: 'Pendiente de aprobación',
+        status: 'Solicitud pendiente',
+      }, ...prev]);
+      notify('Solicitud enviada. Aún no es una cita confirmada.');
       return created;
     } catch (error) {
       notify(error.message);
@@ -461,13 +486,31 @@ export function AppStateProvider({ children }) {
     if (currentRole !== 'patient') return;
     try {
       const patient = patients.find((item) => item.id === currentPatientId);
-      const result = await api.get('/me/appointments');
-      setAppointments((result.data || []).map((record) => mapAppointment({
+      const [result, bookingResult] = await Promise.all([
+        api.get('/me/appointments'),
+        api.get('/me/appointment-requests'),
+      ]);
+      const confirmed = (result.data || []).map((record) => mapAppointment({
         ...record,
         first_name: patient?.first_name,
         last_name_paternal: patient?.last_name_paternal,
         last_name_maternal: patient?.last_name_maternal,
-      })));
+      }));
+      const requests = (bookingResult.data || []).map((item) => ({
+        ...item,
+        id: `booking-request-${item.id}`,
+        request_id: item.id,
+        is_booking_request: true,
+        patient_id: currentPatientId,
+        patient: patient?.name,
+        date: item.requested_date,
+        time: item.requested_start_time,
+        end_time: item.requested_end_time,
+        service: item.service_name || 'Consulta solicitada',
+        room: 'Pendiente de aprobación',
+        status: item.status === 'rechazada' ? 'Solicitud rechazada' : 'Solicitud pendiente',
+      }));
+      setAppointments([...requests, ...confirmed]);
       notify('Citas actualizadas');
     } catch (error) {
       notify(error.message);

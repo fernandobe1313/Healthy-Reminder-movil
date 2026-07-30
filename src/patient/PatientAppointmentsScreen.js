@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { colors } from '../theme/palette';
 import { patientServices } from '../data/patient-services';
 import { addAppointmentToCalendar, scheduleLocalReminder } from '../native/native-capabilities';
@@ -8,11 +9,32 @@ import { appointmentDate, EmptyState, OutlineButton, PrimaryButton, SectionTitle
 import { patientStyles as s } from './patient-ui';
 
 const filters = ['Próximas', 'Completadas', 'Canceladas'];
+
+function toStoredDate(value) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+}
+
+function toStoredTime(value) {
+  return `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`;
+}
+
+function pickerValue(form, mode) {
+  if (mode === 'date' && /^\d{4}-\d{2}-\d{2}$/.test(form.date || '')) {
+    const [year, month, day] = form.date.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  }
+  const [hours, minutes] = String(form.time || '10:00').split(':').map(Number);
+  const value = new Date();
+  value.setHours(hours || 10, minutes || 0, 0, 0);
+  return value;
+}
+
 export function PatientAppointmentsScreen() {
   const state = useAppState();
   const [filter, setFilter] = useState('Próximas');
   const [modal, setModal] = useState(null);
   const [serviceSelectorOpen, setServiceSelectorOpen] = useState(false);
+  const [pickerMode, setPickerMode] = useState(null);
   const [serviceQuery, setServiceQuery] = useState('');
   const [form, setForm] = useState({ service: patientServices[0].name, date: '', time: '10:00', reason: '' });
   const patient = state.currentPatient;
@@ -29,6 +51,23 @@ export function PatientAppointmentsScreen() {
     `${service.name} ${service.category}`.toLocaleLowerCase('es-MX').includes(serviceQuery.toLocaleLowerCase('es-MX').trim())
   ));
   const selectedService = patientServices.find((service) => service.name === form.service);
+
+  const validateRequestedSchedule = () => {
+    if (!form.date || !form.time || !form.service) {
+      state.notify('Completa fecha, hora y servicio');
+      return false;
+    }
+    const selected = new Date(`${form.date}T${form.time}:00`);
+    if (Number.isNaN(selected.valueOf())) {
+      state.notify('Selecciona una fecha y horario válidos');
+      return false;
+    }
+    if (selected <= new Date()) {
+      state.notify('La fecha y el horario deben ser posteriores al momento actual');
+      return false;
+    }
+    return true;
+  };
 
   const openNewRequest = () => {
     setForm({
@@ -51,10 +90,7 @@ export function PatientAppointmentsScreen() {
   };
 
   const submit = async () => {
-    if (!form.date || !form.time || !form.service) {
-      state.notify('Completa fecha, hora y servicio');
-      return;
-    }
+    if (!validateRequestedSchedule()) return;
     try {
       await state.requestPatientAppointment(form);
       setModal(null);
@@ -159,9 +195,6 @@ export function PatientAppointmentsScreen() {
               </View>
             ) : null}
             {!item.is_booking_request ? <View style={s.row}>
-              {!['Confirmada', 'Completada', 'Cancelada'].includes(item.status) ? (
-                <PrimaryButton label="Confirmar" onPress={() => state.updateAppointment(item.id, { status: 'Confirmada' }).catch(() => {})} style={{ flex: 1 }} />
-              ) : null}
               {!['Completada', 'Cancelada'].includes(item.status) && item.reschedule_request_status !== 'pendiente' ? (
                 <OutlineButton label="Solicitar cambio" theme={state.theme} onPress={() => openRescheduleRequest(item)} style={{ flex: 1 }} />
               ) : null}
@@ -220,7 +253,6 @@ export function PatientAppointmentsScreen() {
                 </View> : null}
                 {!modal.item.is_booking_request && !['Completada', 'Cancelada'].includes(modal.item.status) ? (
                   <>
-                    <PrimaryButton label="Confirmar asistencia" onPress={async () => { try { await state.updateAppointment(modal.item.id, { status: 'Confirmada' }); setModal(null); } catch {} }} />
                     {modal.item.reschedule_request_status !== 'pendiente' ? (
                       <OutlineButton label="Solicitar reprogramación" theme={state.theme} onPress={() => openRescheduleRequest(modal.item)} />
                     ) : null}
@@ -243,9 +275,25 @@ export function PatientAppointmentsScreen() {
                   <Text style={{ color: colors.blue, fontSize: 18, fontWeight: '900' }}>⌄</Text>
                 </Pressable>
                 <Text selectable style={[s.fieldLabel, { color: state.theme.text }]}>Fecha solicitada</Text>
-                <TextInput value={form.date} onChangeText={(date) => setForm((prev) => ({ ...prev, date }))} placeholder="AAAA-MM-DD" placeholderTextColor={state.theme.soft} style={[s.field, { color: state.theme.text, backgroundColor: state.theme.input, borderColor: state.theme.line }]} />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Elegir fecha solicitada"
+                  onPress={() => setPickerMode('date')}
+                  style={[s.field, s.between, { backgroundColor: state.theme.input, borderColor: state.theme.line }]}
+                >
+                  <Text selectable style={{ color: state.theme.text }}>{form.date || 'Elegir fecha'}</Text>
+                  <Text style={{ color: colors.blue, fontSize: 18 }}>📅</Text>
+                </Pressable>
                 <Text selectable style={[s.fieldLabel, { color: state.theme.text }]}>Horario</Text>
-                <TextInput value={form.time} onChangeText={(time) => setForm((prev) => ({ ...prev, time }))} placeholder="10:00" placeholderTextColor={state.theme.soft} style={[s.field, { color: state.theme.text, backgroundColor: state.theme.input, borderColor: state.theme.line }]} />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Elegir horario solicitado"
+                  onPress={() => setPickerMode('time')}
+                  style={[s.field, s.between, { backgroundColor: state.theme.input, borderColor: state.theme.line }]}
+                >
+                  <Text selectable style={{ color: state.theme.text }}>{form.time || 'Elegir hora'}</Text>
+                  <Text style={{ color: colors.purple, fontSize: 18 }}>⏰</Text>
+                </Pressable>
                 <Text selectable style={[s.fieldLabel, { color: state.theme.text }]}>Motivo o comentario</Text>
                 <TextInput value={form.reason} onChangeText={(reason) => setForm((prev) => ({ ...prev, reason }))} multiline placeholder="Cuéntanos brevemente qué necesitas" placeholderTextColor={state.theme.soft} style={[s.field, { minHeight: 90, paddingTop: 14, color: state.theme.text, backgroundColor: state.theme.input, borderColor: state.theme.line }]} />
                 <Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>
@@ -257,6 +305,7 @@ export function PatientAppointmentsScreen() {
                   label={modal?.type === 'reschedule' ? 'Enviar nueva fecha' : 'Enviar solicitud'}
                   onPress={() => {
                     if (modal?.type === 'reschedule') {
+                      if (!validateRequestedSchedule()) return;
                       state.requestPatientReschedule(modal.item.id, form)
                         .then(() => setModal(null))
                         .catch(() => {});
@@ -267,6 +316,39 @@ export function PatientAppointmentsScreen() {
             )}
           </ScrollView>
         </View>
+      </Modal>
+
+      <Modal visible={Boolean(pickerMode)} transparent animationType="fade" onRequestClose={() => setPickerMode(null)}>
+        <Pressable style={s.modalRoot} onPress={() => setPickerMode(null)}>
+          <Pressable style={[s.modalCard, { backgroundColor: state.theme.surface, borderColor: state.theme.line }]} onPress={() => {}}>
+            <Text selectable style={[s.sectionTitle, { color: state.theme.text }]}>
+              {pickerMode === 'date' ? 'Seleccionar fecha' : 'Seleccionar hora'}
+            </Text>
+            {pickerMode ? (
+              <DateTimePicker
+                value={pickerValue(form, pickerMode)}
+                mode={pickerMode}
+                display={pickerMode === 'date' && Platform.OS === 'ios' ? 'inline' : pickerMode === 'time' && Platform.OS === 'ios' ? 'spinner' : 'default'}
+                minimumDate={pickerMode === 'date' ? new Date() : undefined}
+                minuteInterval={5}
+                onChange={(event, value) => {
+                  if (event.type === 'dismissed') {
+                    setPickerMode(null);
+                    return;
+                  }
+                  if (value) {
+                    setForm((prev) => ({
+                      ...prev,
+                      [pickerMode]: pickerMode === 'date' ? toStoredDate(value) : toStoredTime(value),
+                    }));
+                  }
+                  if (Platform.OS === 'android') setPickerMode(null);
+                }}
+              />
+            ) : null}
+            <PrimaryButton label="Listo" onPress={() => setPickerMode(null)} />
+          </Pressable>
+        </Pressable>
       </Modal>
 
       <Modal visible={serviceSelectorOpen} transparent animationType="slide" onRequestClose={() => setServiceSelectorOpen(false)}>

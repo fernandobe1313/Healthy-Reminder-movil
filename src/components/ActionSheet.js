@@ -254,7 +254,10 @@ export function ActionSheet({ theme, sheet, patients, onClose, onAddPatient, onU
     if (!form.date?.trim()) nextErrors.date = 'Selecciona la fecha de la cita.';
     if (!start?.trim()) nextErrors.start_time = 'Selecciona la hora de inicio.';
     if (duration <= 0) nextErrors.duration = 'La duracion debe ser mayor a 0.';
+    if (duration > 480) nextErrors.duration = 'La duración máxima es de 480 minutos.';
     if (form.end_time && start && form.end_time <= start) nextErrors.end_time = 'La hora fin debe ser posterior al inicio.';
+    const scheduled = new Date(`${form.date}T${start}:00`);
+    if (form.date && start && (Number.isNaN(scheduled.valueOf()) || scheduled <= new Date())) nextErrors.date = 'La cita debe programarse en una fecha y hora futuras.';
 
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) {
@@ -272,6 +275,7 @@ export function ActionSheet({ theme, sheet, patients, onClose, onAddPatient, onU
     if (total <= 0) nextErrors.total_amount = 'El monto total debe ser mayor a 0.';
     if (paid < 0) nextErrors.paid_amount = 'El monto pagado no puede ser negativo.';
     if (paid > total) nextErrors.paid_amount = 'El monto pagado no puede superar el total.';
+    if (String(form.method).toLocaleLowerCase('es-MX') === 'transferencia' && !form.reference?.trim()) nextErrors.reference = 'Agrega la referencia de la transferencia.';
 
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) {
@@ -287,6 +291,7 @@ export function ActionSheet({ theme, sheet, patients, onClose, onAddPatient, onU
     const pending = Number(sheet?.data?.pending || 0);
     if (amount <= 0) nextErrors.amount = 'El abono debe ser mayor a 0.';
     if (pending && amount > pending) nextErrors.amount = `El abono no puede superar ${money(pending)}.`;
+    if (String(form.method).toLocaleLowerCase('es-MX') === 'transferencia' && !form.reference?.trim()) nextErrors.reference = 'Agrega la referencia de la transferencia.';
 
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) {
@@ -302,6 +307,9 @@ export function ActionSheet({ theme, sheet, patients, onClose, onAddPatient, onU
     if (!form.patient?.trim()) nextErrors.patient = 'Selecciona un paciente.';
     if (!phoneDigits || phoneDigits.length < 8 || phoneDigits.length > 15) nextErrors.phone = 'Ingresa un telefono valido.';
     if (!form.message?.trim()) nextErrors.message = 'El mensaje es obligatorio.';
+    if (form.message?.trim().length > 300) nextErrors.message = 'El mensaje no puede exceder 300 caracteres.';
+    const scheduled = new Date(`${form.date}T${form.time}:00`);
+    if (Number.isNaN(scheduled.valueOf()) || scheduled <= new Date()) nextErrors.date = 'Programa el recordatorio para una fecha y hora futuras.';
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) {
       notify(nextErrors.patient ? 'Selecciona el paciente del recordatorio' : 'Revisa el recordatorio');

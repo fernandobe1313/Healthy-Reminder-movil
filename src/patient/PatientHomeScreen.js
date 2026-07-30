@@ -58,7 +58,7 @@ export function PatientHomeScreen() {
             <StatusChip label={upcoming.status} tone={toneForStatus(upcoming.status)} />
           </View>
           <Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>
-            {upcoming.room || 'Consultorio 1'} · {upcoming.dentist || 'Dra. Mariana Torres'}
+            {upcoming.room || 'Consultorio por confirmar'} · {upcoming.dentist || 'Dentista por asignar'}
           </Text>
           <View style={s.row}>
             {upcoming.status !== 'Confirmada' ? (

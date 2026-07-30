@@ -170,7 +170,7 @@ export function PatientAppointmentsScreen() {
               </View>
               <StatusChip label={item.status} tone={toneForStatus(item.status)} />
             </View>
-            <Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>{item.room || 'Consultorio por confirmar'} · {item.dentist || 'Dra. Mariana Torres'}</Text>
+            <Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>{item.room || 'Consultorio por confirmar'} · {item.dentist || 'Dentista por asignar'}</Text>
             {item.is_booking_request ? (
               <View style={[s.card, { marginTop: 10, backgroundColor: state.theme.chip, borderColor: item.status === 'Solicitud rechazada' ? colors.red : colors.blue }]}>
                 <Text selectable style={[s.cardTitle, { color: item.status === 'Solicitud rechazada' ? colors.red : colors.blue }]}>
@@ -230,7 +230,7 @@ export function PatientAppointmentsScreen() {
                 <View style={[s.card, { backgroundColor: state.theme.input, borderColor: state.theme.line }]}>
                   <Text selectable style={[s.cardCopy, { color: state.theme.text }]}>Fecha: {appointmentDate(modal.item)}</Text>
                   <Text selectable style={[s.cardCopy, { color: state.theme.text }]}>Horario: {modal.item.time}{modal.item.end_time ? `–${modal.item.end_time}` : ''}</Text>
-                  <Text selectable style={[s.cardCopy, { color: state.theme.text }]}>Dentista: {modal.item.dentist || 'Dra. Mariana Torres'}</Text>
+                  <Text selectable style={[s.cardCopy, { color: state.theme.text }]}>Dentista: {modal.item.dentist || 'Dentista por asignar'}</Text>
                   <Text selectable style={[s.cardCopy, { color: state.theme.text }]}>Ubicación: {modal.item.room || 'Consultorio 1'}</Text>
                 </View>
                 <Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>

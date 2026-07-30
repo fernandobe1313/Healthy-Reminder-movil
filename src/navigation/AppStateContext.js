@@ -90,7 +90,7 @@ export function AppStateProvider({ children }) {
       id: 1,
       patient_id: 1,
       name: 'Plan restaurativo',
-      dentist: 'Dra. Mariana Torres',
+      dentist: 'Equipo clínico',
       started_at: '2026-05-20',
       status: 'En proceso',
       progress: 60,

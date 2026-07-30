@@ -69,6 +69,7 @@ export function mapAppointment(record) {
     date: record.appointment_date,
     time: record.start_time,
     service: record.service_name || record.appointment_type || 'Consulta',
+    dentist: record.dentist_name || '',
     type: record.appointment_type,
     room: record.office_unit,
     status,

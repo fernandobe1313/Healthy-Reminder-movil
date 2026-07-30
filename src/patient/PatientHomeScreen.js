@@ -11,7 +11,13 @@ export function PatientHomeScreen() {
   const router = useRouter();
   const patient = state.currentPatient;
   const appointments = state.appointments.filter((item) => item.patient_id === state.currentPatientId || item.patient === patient?.name);
-  const upcoming = appointments.find((item) => !['Cancelada', 'Completada'].includes(item.status));
+  const upcoming = appointments.find((item) => {
+    if (['Cancelada', 'Completada'].includes(item.status)) return false;
+    const date = appointmentDate(item);
+    const time = String(item.time || item.start_time || '23:59').slice(0, 5);
+    const moment = new Date(`${date}T${time}:00`);
+    return Number.isNaN(moment.valueOf()) || moment >= new Date();
+  });
   const payments = state.payments.filter((item) => item.patient_id === state.currentPatientId || item.patient === patient?.name);
   const pending = payments.reduce((sum, item) => sum + Number(item.pending || 0), 0);
   const plan = state.treatmentPlans.find((item) => item.patient_id === state.currentPatientId);

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { Linking } from 'react-native';
+import { AppState, Linking } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import 'expo-sqlite/localStorage/install';
 import { appointmentsSeed, patientsSeed, paymentsSeed, remindersSeed } from '../data/mock-data';
@@ -356,6 +356,31 @@ export function AppStateProvider({ children }) {
       })
       .finally(() => setAuthLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!loggedIn || sheet) return undefined;
+    let syncing = false;
+    const sync = async () => {
+      if (syncing) return;
+      syncing = true;
+      try {
+        if (currentRole === 'patient' && currentPatientId) await hydratePatientData(currentPatientId);
+        else if (currentRole === 'dentist') await hydrateStaffData({ silent: true });
+      } catch {
+        // Conserva la última información válida y vuelve a intentar en el siguiente ciclo.
+      } finally {
+        syncing = false;
+      }
+    };
+    const interval = setInterval(sync, 15000);
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') sync();
+    });
+    return () => {
+      clearInterval(interval);
+      subscription.remove();
+    };
+  }, [loggedIn, currentRole, currentPatientId, sheet]);
 
   useEffect(() => {
     try {

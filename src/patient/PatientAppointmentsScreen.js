@@ -29,6 +29,13 @@ function pickerValue(form, mode) {
   return value;
 }
 
+function appointmentMoment(item) {
+  const date = appointmentDate(item);
+  const time = String(item.time || item.start_time || '23:59').slice(0, 5);
+  const value = new Date(`${date}T${time}:00`);
+  return Number.isNaN(value.valueOf()) ? null : value;
+}
+
 export function PatientAppointmentsScreen() {
   const state = useAppState();
   const [filter, setFilter] = useState('Próximas');
@@ -45,7 +52,8 @@ export function PatientAppointmentsScreen() {
   const filtered = patientAppointments.filter((item) => {
     if (filter === 'Completadas') return item.status === 'Completada';
     if (filter === 'Canceladas') return item.status === 'Cancelada';
-    return !['Completada', 'Cancelada'].includes(item.status);
+    const moment = appointmentMoment(item);
+    return !['Completada', 'Cancelada'].includes(item.status) && (!moment || moment >= new Date());
   });
   const filteredServices = patientServices.filter((service) => (
     `${service.name} ${service.category}`.toLocaleLowerCase('es-MX').includes(serviceQuery.toLocaleLowerCase('es-MX').trim())

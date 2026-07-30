@@ -201,6 +201,8 @@ export const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 17,
     fontWeight: '900',
+    flexShrink: 1,
+    textAlign: 'center',
     zIndex: 1,
   },
   gradientArrowBubble: {

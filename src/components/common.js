@@ -118,7 +118,14 @@ export function GradientButton({ label, onPress, right = 'arrow', disabled = fal
           <Animated.View style={[styles.ledButtonShimmer, { transform: [{ translateX: shimmerX }, { rotate: '14deg' }] }]} />
         </>
       ) : null}
-      <Text style={styles.gradientLabel}>{label}</Text>
+      <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.78}
+        style={styles.gradientLabel}
+      >
+        {label}
+      </Text>
       {right ? (
         <View style={styles.gradientArrowBubble}>
           {right === 'arrow' ? <ButtonArrowIcon /> : <Text style={styles.gradientArrow}>{right}</Text>}

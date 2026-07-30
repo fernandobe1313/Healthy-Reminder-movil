@@ -1,5 +1,4 @@
 import * as Calendar from 'expo-calendar';
-import Constants from 'expo-constants';
 
 let notificationsConfigured = false;
 
@@ -7,7 +6,6 @@ function loadNotifications() {
   // Expo Go para Android ya no incluye el módulo remoto desde SDK 53.
   // Evitamos cargar el paquete completo allí para que el resto de la app
   // (cámara, calendario y seguimientos) continúe funcionando normalmente.
-  if (Constants.executionEnvironment === 'storeClient') return null;
   const Notifications = require('expo-notifications');
   if (!notificationsConfigured) {
     Notifications.setNotificationHandler({

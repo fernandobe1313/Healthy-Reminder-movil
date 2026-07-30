@@ -11,6 +11,7 @@ import {
   appointmentColor,
   mapAppointment,
   mapFollowUp,
+  mapNotification,
   mapPatient,
   mapPayment,
   mapReminder,
@@ -72,6 +73,7 @@ export function AppStateProvider({ children }) {
   const [payments, setPayments] = useState(paymentsSeed);
   const [appointments, setAppointments] = useState(appointmentsSeed);
   const [reminders, setReminders] = useState(remindersSeed);
+  const [notifications, setNotifications] = useState([]);
   const [sheet, setSheet] = useState(null);
   const [toast, setToast] = useState('');
   const [search, setSearch] = useState('');
@@ -172,6 +174,7 @@ export function AppStateProvider({ children }) {
     setAppointments((snapshot.appointmentResult.data || []).map(mapAppointment));
     setPayments(mappedPayments);
     setReminders((snapshot.reminderResult.data || []).map(mapReminder));
+    setNotifications((snapshot.notificationResult.notifications || []).map(mapNotification));
     setFollowUps((snapshot.followUpResult.data || []).map(mapFollowUp));
     setClinicalRecords(snapshot.clinicalResult.data || []);
     setServiceCatalog((snapshot.serviceResult.data || []).map(mapService));
@@ -190,6 +193,7 @@ export function AppStateProvider({ children }) {
         clinicalResult,
         serviceResult,
         dashboardResult,
+        notificationResult,
       ] = await Promise.all([
         resources.patients(),
         resources.appointments(),
@@ -199,10 +203,11 @@ export function AppStateProvider({ children }) {
         resources.clinical(),
         resources.services(),
         resources.dashboard(),
+        resources.notifications(),
       ]);
       applyStaffSnapshot({
         patientResult, appointmentResult, paymentResult, reminderResult,
-        followUpResult, clinicalResult, serviceResult, dashboardResult,
+        followUpResult, clinicalResult, serviceResult, dashboardResult, notificationResult,
       });
     } finally {
       if (!silent) setDataLoading(false);
@@ -220,6 +225,7 @@ export function AppStateProvider({ children }) {
       serviceResult,
       reminderResult,
       odontogramResult,
+      notificationResult,
     ] = await Promise.all([
       api.get('/me'),
       api.get('/me/appointments'),
@@ -230,6 +236,7 @@ export function AppStateProvider({ children }) {
       api.get('/me/services'),
       api.get('/me/reminders'),
       api.get('/me/odontogram'),
+      api.get('/me/notifications'),
     ]);
     const fullName = [profile.first_name, profile.last_name_paternal, profile.last_name_maternal].filter(Boolean).join(' ');
     const mobilePatient = {
@@ -331,6 +338,7 @@ export function AppStateProvider({ children }) {
       first_name: profile.first_name,
       last_name_paternal: profile.last_name_paternal,
     })));
+    setNotifications((notificationResult.notifications || []).map(mapNotification));
     setOdontogramByPatient({
       [patientId]: (odontogramResult.data || []).reduce((entries, entry) => ({
         ...entries,
@@ -630,7 +638,7 @@ export function AppStateProvider({ children }) {
 
   const pendingPaymentsTotal = payments.reduce((sum, payment) => sum + Number(payment.pending || 0), 0);
   const pendingReminderCount = reminders.filter((reminder) => reminder.status !== 'Enviado').length;
-  const notificationItems = [
+  const legacyNotificationItems = [
     followUps.some((item) => item.status === 'Alerta' && !item.reviewed)
       ? {
           id: 'followups-alert',
@@ -676,9 +684,27 @@ export function AppStateProvider({ children }) {
         }
       : null,
   ].filter(Boolean);
+  const notificationItems = notifications;
+  const unreadNotificationCount = notificationItems.filter((item) => !item.is_read).length;
 
   const openNotifications = () => {
     setSheet({ type: 'notifications', data: { items: notificationItems } });
+  };
+
+  const markNotificationRead = async (item) => {
+    if (!item || item.is_read || !notifications.length) return;
+    try {
+      if (currentRole === 'patient') {
+        await api.put(`/me/notifications/${encodeURIComponent(item.id)}/read`, {});
+      } else {
+        await resources.markNotificationRead(item.id);
+      }
+      setNotifications((current) => current.map((notification) => (
+        notification.id === item.id ? { ...notification, is_read: true } : notification
+      )));
+    } catch (error) {
+      notify(error.message);
+    }
   };
 
   const addPatient = async (form = {}) => {
@@ -1033,7 +1059,9 @@ export function AppStateProvider({ children }) {
     setCalendarEvents,
     notify,
     notificationItems,
+    unreadNotificationCount,
     openNotifications,
+    markNotificationRead,
     addPatient,
     updatePatient,
     deletePatient,
@@ -1089,6 +1117,8 @@ export function AppStateProvider({ children }) {
     emergencyVisibility,
     calendarEvents,
     notificationItems,
+    unreadNotificationCount,
+    notifications,
   ]);
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;

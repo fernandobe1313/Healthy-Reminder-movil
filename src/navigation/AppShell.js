@@ -114,8 +114,8 @@ export function AppShell() {
               pressed && styles.pressed,
             ]}>
             <BellIcon color={theme.text} />
-            {state.notificationItems.length ? (
-              <View style={styles.badge}><Text style={styles.badgeText}>{state.notificationItems.length}</Text></View>
+            {state.unreadNotificationCount ? (
+              <View style={styles.badge}><Text style={styles.badgeText}>{state.unreadNotificationCount}</Text></View>
             ) : null}
           </Pressable>
           <Pressable
@@ -152,9 +152,10 @@ export function AppShell() {
         onUpdatePatient={state.updatePatient}
         onDeletePatient={state.deletePatient}
         onOpenPatientEdit={(patient) => state.setSheet({ type: 'patientEdit', data: patient })}
-        onOpenNotificationTarget={(target) => {
+        onOpenNotificationTarget={async (item) => {
+          await state.markNotificationRead(item);
           state.setSheet(null);
-          if (target) navigateToScreen(target);
+          if (item?.target) navigateToScreen(item.target);
         }}
         notify={state.notify}
       />

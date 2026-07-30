@@ -1,13 +1,12 @@
 import React, { useEffect } from 'react';
 import { router, Stack } from 'expo-router';
-import Constants from 'expo-constants';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppStateProvider } from '../src/navigation/AppStateContext';
 import { VisualEffectsProvider } from '../src/theme/visual-effects';
 
 function NotificationObserver() {
   useEffect(() => {
-    if (process.env.EXPO_OS === 'web' || Constants.executionEnvironment === 'storeClient') return undefined;
+    if (process.env.EXPO_OS === 'web') return undefined;
     const Notifications = require('expo-notifications');
     const openTarget = (notification) => {
       const url = notification?.request?.content?.data?.url;

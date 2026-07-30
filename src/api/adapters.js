@@ -109,6 +109,28 @@ export function mapReminder(record) {
   };
 }
 
+export function mapNotification(record) {
+  const type = record.type || 'info';
+  const targetByLink = {
+    '/citas': 'agenda',
+    '/pagos': 'payments',
+    '/inventario': 'inventory',
+    '/seguimientos': 'followups',
+    '/recordatorios': 'reminders',
+    '/patient/citas': 'patient-appointments',
+    '/patient/pagos': 'patient-payments',
+  };
+  return {
+    ...record,
+    body: record.message || '',
+    target: targetByLink[record.link] || '',
+    icon: type === 'alert' ? '!' : type === 'warning' ? '!' : 'i',
+    tone: type === 'alert' ? colors.red : type === 'warning' ? colors.amber : colors.blue,
+    action: 'Abrir',
+    is_read: Boolean(record.is_read),
+  };
+}
+
 export function mapFollowUp(record) {
   const patient = [record.first_name, record.last_name_paternal].filter(Boolean).join(' ');
   return {

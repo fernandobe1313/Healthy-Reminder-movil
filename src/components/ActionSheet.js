@@ -508,13 +508,13 @@ export function ActionSheet({ theme, sheet, patients, onClose, onAddPatient, onU
           <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetScrollContent} showsVerticalScrollIndicator={false}>
             {(sheet.data?.items || []).length ? (
               (sheet.data?.items || []).map((item) => (
-                <View key={item.id} style={[styles.notificationRow, { backgroundColor: theme.input, borderColor: theme.line }]}>
+                <View key={item.id} style={[styles.notificationRow, { backgroundColor: theme.input, borderColor: theme.line, opacity: item.is_read ? 0.62 : 1 }]}>
                   <IconBadge icon={item.icon} color={item.tone} size={48} />
                   <View style={styles.notificationBody}>
                     <Text selectable style={[styles.cardTitle, { color: theme.text }]}>{item.title}</Text>
                     <Text selectable style={[styles.cardSub, { color: theme.muted }]}>{item.body}</Text>
                     <Pressable
-                      onPress={() => onOpenNotificationTarget?.(item.target)}
+                      onPress={() => onOpenNotificationTarget?.(item)}
                       style={({ pressed }) => [
                         styles.notificationAction,
                         { backgroundColor: `${item.tone}18`, borderColor: `${item.tone}40` },

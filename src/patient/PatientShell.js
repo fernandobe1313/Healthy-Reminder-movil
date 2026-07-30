@@ -43,7 +43,7 @@ export function PatientShell() {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const active = pathname.replace(/^\/+/, '').split('/')[0] || 'patient-home';
-  const patientReminders = state.reminders.filter((item) => item.patient_id === state.currentPatientId);
+  const patientNotifications = state.notificationItems;
 
   return (
     <View style={{ flex: 1, backgroundColor: state.theme.bg }}>
@@ -62,12 +62,12 @@ export function PatientShell() {
         </View>
         <View style={{ flexDirection: 'row', gap: 9 }}>
           <Pressable
-            onPress={() => state.setSheet({ type: 'patientNotifications', data: patientReminders })}
+            onPress={state.openNotifications}
             style={[s.headerButton, { backgroundColor: state.theme.input, borderColor: state.theme.line }]}>
             <BellIcon color={state.theme.text} />
-            {patientReminders.length ? (
+            {state.unreadNotificationCount ? (
               <View style={[s.badge, { backgroundColor: colors.red }]}>
-                <Text style={s.badgeText}>{patientReminders.length}</Text>
+                <Text style={s.badgeText}>{state.unreadNotificationCount}</Text>
               </View>
             ) : null}
           </Pressable>
@@ -110,7 +110,7 @@ export function PatientShell() {
       </View>
 
       <Modal
-        visible={state.sheet?.type === 'patientNotifications'}
+        visible={state.sheet?.type === 'notifications'}
         transparent
         animationType="slide"
         onRequestClose={() => state.setSheet(null)}>
@@ -122,12 +122,19 @@ export function PatientShell() {
                 <Text style={{ color: state.theme.muted, fontSize: 22 }}>×</Text>
               </Pressable>
             </View>
-            {patientReminders.length ? patientReminders.map((item) => (
-              <View key={item.id} style={[s.card, { backgroundColor: state.theme.card, borderColor: state.theme.line }]}>
+            {patientNotifications.length ? patientNotifications.map((item) => (
+              <Pressable
+                key={item.id}
+                onPress={async () => {
+                  await state.markNotificationRead(item);
+                  state.setSheet(null);
+                  if (routes[item.target]) router.replace(routes[item.target]);
+                }}
+                style={[s.card, { backgroundColor: state.theme.card, borderColor: state.theme.line, opacity: item.is_read ? 0.62 : 1 }]}>
                 <Text selectable style={[s.cardTitle, { color: state.theme.text }]}>{item.title}</Text>
-                <Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>{item.message}</Text>
-                <Text selectable style={[s.cardCopy, { color: colors.blue }]}>{item.date} · {item.time}</Text>
-              </View>
+                <Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>{item.body}</Text>
+                {item.target ? <Text selectable style={[s.cardCopy, { color: colors.blue }]}>Abrir detalle</Text> : null}
+              </Pressable>
             )) : (
               <Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>No tienes notificaciones nuevas.</Text>
             )}

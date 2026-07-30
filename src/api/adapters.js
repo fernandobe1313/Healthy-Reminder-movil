@@ -2,6 +2,7 @@ import { colors } from '../theme/palette';
 
 const uiStatus = {
   pendiente: 'Pendiente',
+  en_curso: 'En curso',
   confirmada: 'Confirmada',
   finalizada: 'Completada',
   cancelada: 'Cancelada',
@@ -19,6 +20,8 @@ const uiStatus = {
 
 const apiStatus = {
   pendiente: 'pendiente',
+  'en curso': 'en_curso',
+  en_curso: 'en_curso',
   confirmada: 'confirmada',
   completada: 'finalizada',
   finalizada: 'finalizada',

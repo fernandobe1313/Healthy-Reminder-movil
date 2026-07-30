@@ -288,6 +288,7 @@ export function PaymentInstallmentForm({ theme, form, updateForm, errors }) {
           }
         />
         <DateField theme={theme} value={form.date} onChange={(value) => updateForm('date', value)} />
+        <Input label="Referencia" value={form.reference} onChangeText={(value) => updateForm('reference', value)} theme={theme} icon="#" placeholder="Folio o autorización" />
         <Input label="Notas" value={form.notes} onChangeText={(value) => updateForm('notes', value)} theme={theme} icon="N" placeholder="Detalle del abono" multiline />
       </View>
 
@@ -295,4 +296,3 @@ export function PaymentInstallmentForm({ theme, form, updateForm, errors }) {
     </>
   );
 }
-

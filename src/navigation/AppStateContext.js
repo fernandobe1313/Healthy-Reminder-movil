@@ -826,12 +826,16 @@ export function AppStateProvider({ children }) {
   const addPaymentInstallment = async (paymentId, form = {}) => {
     const target = payments.find((payment) => payment.id === paymentId);
     if (!target) return;
-    const amount = Math.min(parseMoney(form.amount), Number(target.pending || 0));
+    const amount = parseMoney(form.amount);
+    if (amount <= 0 || amount > Number(target.pending || 0)) {
+      throw new Error('El monto del abono no es válido.');
+    }
     try {
       const updated = await resources.addPayment(paymentId, {
         amount,
         payment_method: form.method || 'efectivo',
         payment_reference: form.reference || '',
+        transaction_date: form.date,
         notes: form.notes || '',
       });
       const mapped = mapPayment({ ...updated, first_name: target.patient.split(' ')[0], last_name_paternal: target.patient.split(' ').slice(1).join(' ') });

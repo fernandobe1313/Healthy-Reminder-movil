@@ -92,6 +92,7 @@ const paymentInstallmentDefaults = {
   amount: '',
   method: 'Efectivo',
   date: toStoredDate(new Date()),
+  reference: '',
   notes: '',
 };
 

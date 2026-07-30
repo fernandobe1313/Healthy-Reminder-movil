@@ -9,7 +9,6 @@ import { GradientButton, HeaderButton, IconBadge, Input, LedText, SoftOrb } from
 const logo = require('../../assets/logoHR.png');
 
 export function AuthScreen({ theme, setThemeMode, onEnter }) {
-  const [mode, setMode] = useState('login');
   const [role, setRole] = useState('dentist');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -67,26 +66,10 @@ export function AuthScreen({ theme, setThemeMode, onEnter }) {
           <Text selectable style={[styles.authSubtitle, { color: theme.muted }]}>Sistema Odontologico</Text>
         </View>
 
-        <View style={[styles.segment, { backgroundColor: theme.surface, borderColor: theme.line }]}>
-          {['login', 'register'].map((item) => (
-            <Pressable
-              key={item}
-              onPress={() => setMode(item)}
-              style={[styles.segmentItem, mode === item && { backgroundColor: theme.chip }]}>
-              <Text style={[styles.segmentText, { color: mode === item ? colors.blueDark : theme.muted }]}>
-                {item === 'login' ? 'Iniciar Sesion' : 'Registrarse'}
-              </Text>
-              {mode === item ? <View style={styles.segmentLine} /> : null}
-            </Pressable>
-          ))}
-        </View>
-
         <View style={styles.formBlock}>
-          <Text selectable style={[styles.screenTitle, { color: theme.text }]}>
-            {mode === 'login' ? 'Bienvenido de nuevo' : 'Crea tu acceso'}
-          </Text>
+          <Text selectable style={[styles.screenTitle, { color: theme.text }]}>Bienvenido de nuevo</Text>
           <Text selectable style={[styles.screenSubtitle, { color: theme.muted }]}>
-            {mode === 'login' ? 'Inicia sesion para continuar' : 'Configura tu acceso a HealthyReminder'}
+            Inicia sesión con el acceso proporcionado por tu clínica
           </Text>
 
           <View style={[styles.segment, { backgroundColor: theme.surface, borderColor: theme.line }]}>
@@ -109,15 +92,6 @@ export function AuthScreen({ theme, setThemeMode, onEnter }) {
             ))}
           </View>
 
-          {mode === 'register' ? (
-            <Input
-              label={role === 'patient' ? 'Codigo de invitacion' : 'Nombre del consultorio'}
-              value={role === 'patient' ? 'HR-ALAN-2026' : 'Clinica HealthyReminder'}
-              onChangeText={() => {}}
-              theme={theme}
-              icon="H"
-            />
-          ) : null}
           <Input label="Usuario o correo" value={email} onChangeText={setEmail} theme={theme} icon="@" />
           <Input
             label="Contrasena"
@@ -135,12 +109,8 @@ export function AuthScreen({ theme, setThemeMode, onEnter }) {
           </Pressable>
 
           <GradientButton
-            label={submitting ? 'Verificando...' : mode === 'login' ? `Entrar como ${role === 'patient' ? 'paciente' : 'dentista'}` : 'Crear cuenta'}
+            label={submitting ? 'Verificando...' : `Entrar como ${role === 'patient' ? 'paciente' : 'dentista'}`}
             onPress={async () => {
-              if (mode === 'register') {
-                Alert.alert('Registro protegido', 'Solicita al administrador que cree tu acceso desde la web.');
-                return;
-              }
               if (submitting) return;
               setSubmitting(true);
               try {
@@ -153,6 +123,9 @@ export function AuthScreen({ theme, setThemeMode, onEnter }) {
               }
             }}
           />
+          <Text selectable style={[styles.screenSubtitle, { color: theme.muted, textAlign: 'center' }]}>
+            ¿Aún no tienes acceso? Solicítalo en tu clínica. El administrador debe crear y vincular tu cuenta.
+          </Text>
         </View>
 
         <View style={[styles.tipCard, { backgroundColor: theme.surface, borderColor: theme.line }]}>

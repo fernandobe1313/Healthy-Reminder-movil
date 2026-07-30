@@ -24,6 +24,25 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "@react-native-community/datetimepicker",
+      "expo-router",
+      "expo-sqlite",
+      [
+        "expo-notifications",
+        {
+          "color": "#3b82f6",
+          "defaultChannel": "healthy-reminder"
+        }
+      ],
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "HealthyReminder necesita acceso para agregar y actualizar tus citas dentales."
+        }
+      ],
+      "expo-secure-store"
+    ]
   }
 }

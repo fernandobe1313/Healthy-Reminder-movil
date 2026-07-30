@@ -28,7 +28,6 @@ const apiStatus = {
   cancelada: 'cancelada',
   'no asistió': 'no_asistio',
   reprogramada: 'reprogramada',
-  'reprogramación solicitada': 'reprogramada',
   solicitada: 'solicitada',
 };
 

@@ -240,15 +240,12 @@ export function AppStateProvider({ children }) {
       balance: (paymentResult.data || []).reduce((sum, item) => sum + Number(item.remaining_balance || 0), 0),
     };
     setPatients((current) => [mobilePatient, ...current.filter((item) => item.id !== patientId)]);
-    setAppointments((appointmentResult.data || []).map((item) => ({
+    setAppointments((appointmentResult.data || []).map((item) => mapAppointment({
       ...item,
       patient_id: patientId,
-      patient: fullName,
-      time: item.start_time,
-      date: item.appointment_date,
-      service: item.service_name || item.appointment_type,
-      status: item.status,
-      color: colors.blue,
+      first_name: profile.first_name,
+      last_name_paternal: profile.last_name_paternal,
+      last_name_maternal: profile.last_name_maternal,
     })));
     setPayments((paymentResult.data || []).map((item) => ({
       ...item,
@@ -424,6 +421,54 @@ export function AppStateProvider({ children }) {
       }), ...prev]);
       notify('Solicitud de cita enviada');
       return created;
+    } catch (error) {
+      notify(error.message);
+      throw error;
+    }
+  };
+
+  const requestPatientReschedule = async (appointmentId, form = {}) => {
+    const target = appointments.find((item) => item.id === appointmentId);
+    if (!target) throw new Error('Cita no encontrada.');
+    try {
+      const duration = Number(target.duration || 30);
+      const [hours, minutes] = String(form.time || '').split(':').map(Number);
+      const end = new Date(2000, 0, 1, hours, minutes + duration);
+      const request = await api.post(`/me/appointments/${appointmentId}/reschedule-requests`, {
+        requested_date: form.date,
+        requested_start_time: form.time,
+        requested_end_time: `${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`,
+        reason: form.reason || '',
+      });
+      setAppointments((prev) => prev.map((appointment) => appointment.id === appointmentId ? {
+        ...appointment,
+        reschedule_request_id: request.id,
+        reschedule_request_status: request.status,
+        reschedule_requested_date: request.requested_date,
+        reschedule_requested_start_time: request.requested_start_time,
+        reschedule_requested_end_time: request.requested_end_time,
+        reschedule_reason: request.reason,
+      } : appointment));
+      notify('Solicitud enviada. Tu cita original sigue vigente.');
+      return request;
+    } catch (error) {
+      notify(error.message);
+      throw error;
+    }
+  };
+
+  const refreshPatientAppointments = async () => {
+    if (currentRole !== 'patient') return;
+    try {
+      const patient = patients.find((item) => item.id === currentPatientId);
+      const result = await api.get('/me/appointments');
+      setAppointments((result.data || []).map((record) => mapAppointment({
+        ...record,
+        first_name: patient?.first_name,
+        last_name_paternal: patient?.last_name_paternal,
+        last_name_maternal: patient?.last_name_maternal,
+      })));
+      notify('Citas actualizadas');
     } catch (error) {
       notify(error.message);
       throw error;
@@ -927,6 +972,8 @@ export function AppStateProvider({ children }) {
     addAppointment,
     updateAppointment,
     requestPatientAppointment,
+    requestPatientReschedule,
+    refreshPatientAppointments,
     updateCurrentPatient,
     createFollowUp,
     submitFollowUp,

@@ -393,8 +393,9 @@ export function AppStateProvider({ children }) {
   useEffect(() => {
     try {
       globalThis.localStorage?.setItem('hr_emergency_visibility', JSON.stringify(emergencyVisibility));
-      const patient = patients.find((item) => item.id === currentPatientId);
-      if (patient) globalThis.localStorage?.setItem('hr_emergency_patient', JSON.stringify(patient));
+      // Los expedientes contienen PII y datos clinicos: se conservan en memoria
+      // y se recargan desde la API, nunca se persisten en localStorage/SQLite.
+      globalThis.localStorage?.removeItem('hr_emergency_patient');
     } catch {
       // El estado sigue disponible en memoria cuando el almacenamiento no existe.
     }

@@ -3,7 +3,7 @@ import { AssistantScreen } from '../../src/screens/AssistantScreen';
 import { useAppState } from '../../src/navigation/AppStateContext';
 
 export default function AssistantRoute() {
-  const { theme } = useAppState();
+  const { theme, patients } = useAppState();
 
-  return <AssistantScreen theme={theme} />;
+  return <AssistantScreen theme={theme} patients={patients} />;
 }

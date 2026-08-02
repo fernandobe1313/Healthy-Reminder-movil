@@ -12,6 +12,9 @@ export default function SettingsRoute() {
       setThemeMode={state.setThemeMode}
       onLogout={state.logout}
       notify={state.notify}
+      currentUser={state.currentUser}
+      notificationsEnabled={state.staffNotificationsEnabled}
+      setNotificationsEnabled={state.setStaffNotificationsEnabled}
     />
   );
 }

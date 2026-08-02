@@ -1,16 +1,16 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Linking, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { colors } from '../theme/palette';
 import { useAppState } from '../navigation/AppStateContext';
-import { ensureNotifications } from '../native/native-capabilities';
+import { resources } from '../api/resources';
 import { OutlineButton, PrimaryButton, SectionTitle } from './patient-components';
 import { patientStyles as s } from './patient-ui';
 
-function Field({ label, value, onChangeText, theme, editable = true }) {
+function Field({ label, value, onChangeText, theme, editable = true, secureTextEntry = false }) {
   return (
     <View style={{ gap: 7 }}>
       <Text selectable style={[s.fieldLabel, { color: theme.text }]}>{label}</Text>
-      <TextInput editable={editable} value={String(value || '')} onChangeText={onChangeText} placeholderTextColor={theme.soft} style={[s.field, { color: theme.text, backgroundColor: theme.input, borderColor: theme.line, opacity: editable ? 1 : 0.65 }]} />
+      <TextInput editable={editable} secureTextEntry={secureTextEntry} value={String(value || '')} onChangeText={onChangeText} placeholderTextColor={theme.soft} style={[s.field, { color: theme.text, backgroundColor: theme.input, borderColor: theme.line, opacity: editable ? 1 : 0.65 }]} />
     </View>
   );
 }
@@ -19,7 +19,43 @@ export function PatientProfileScreen() {
   const state = useAppState();
   const [section, setSection] = useState('Datos');
   const [form, setForm] = useState({ ...state.currentPatient });
+  const [passwordRequest, setPasswordRequest] = useState(null);
+  const [requestReason, setRequestReason] = useState('');
+  const [passwords, setPasswords] = useState({ current: '', next: '', confirm: '' });
+  const [passwordBusy, setPasswordBusy] = useState(false);
   const prefs = state.patientPreferences;
+
+  useEffect(() => setForm({ ...state.currentPatient }), [state.currentPatient]);
+
+  useEffect(() => {
+    if (section !== 'Avisos') return;
+    resources.myPasswordChangeRequest().then(setPasswordRequest).catch((error) => state.notify(error.message));
+  }, [section]);
+
+  const requestPasswordChange = async () => {
+    setPasswordBusy(true);
+    try {
+      setPasswordRequest(await resources.requestPasswordChange({ reason: requestReason.trim() }));
+      setRequestReason('');
+      state.notify('Solicitud enviada al administrador');
+    } catch (error) { state.notify(error.message); }
+    finally { setPasswordBusy(false); }
+  };
+
+  const completePasswordChange = async () => {
+    if (!passwords.current || passwords.next.length < 8 || !/[A-Za-z]/.test(passwords.next) || !/\d/.test(passwords.next) || passwords.next !== passwords.confirm) {
+      state.notify('La contraseña debe coincidir y tener 8 caracteres, una letra y un número');
+      return;
+    }
+    setPasswordBusy(true);
+    try {
+      await resources.changePassword({ current_password: passwords.current, new_password: passwords.next });
+      setPasswords({ current: '', next: '', confirm: '' });
+      setPasswordRequest(await resources.myPasswordChangeRequest());
+      state.notify('Contraseña actualizada');
+    } catch (error) { state.notify(error.message); }
+    finally { setPasswordBusy(false); }
+  };
 
   const save = async () => {
     try {
@@ -80,7 +116,7 @@ export function PatientProfileScreen() {
         <>
           <SectionTitle theme={state.theme}>Preferencias de notificación</SectionTitle>
           {[
-            ['push', 'Notificaciones de la app'],
+            ['push', 'Notificaciones dentro de la app'],
             ['email', 'Correo electrónico'],
             ['whatsapp', 'WhatsApp'],
             ['appointmentReminders', 'Recordatorios de citas'],
@@ -90,14 +126,7 @@ export function PatientProfileScreen() {
               <Text selectable style={[s.cardTitle, { color: state.theme.text, flex: 1 }]}>{label}</Text>
               <Switch
                 value={prefs[key]}
-                onValueChange={async (value) => {
-                  if (key === 'push' && value) {
-                    const granted = await ensureNotifications();
-                    if (!granted) {
-                      state.notify('El dispositivo no concedió permiso');
-                      return;
-                    }
-                  }
+                onValueChange={(value) => {
                   state.setPatientPreferences((prev) => ({ ...prev, [key]: value }));
                   state.notify(value ? 'Notificación activada' : 'Notificación desactivada');
                 }}
@@ -106,7 +135,28 @@ export function PatientProfileScreen() {
               />
             </View>
           ))}
-          <OutlineButton label="Cambiar contraseña" theme={state.theme} onPress={() => state.notify('Solicitud de cambio iniciada')} />
+          <SectionTitle theme={state.theme}>Seguridad de la cuenta</SectionTitle>
+          <View style={[s.card, { backgroundColor: state.theme.card, borderColor: state.theme.line }]}>
+            <Text selectable style={[s.cardTitle, { color: state.theme.text }]}>Cambio de contraseña supervisado</Text>
+            <Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>Para proteger tu expediente clínico, el administrador debe aprobar la solicitud antes del cambio.</Text>
+            {passwordRequest?.status === 'pendiente' ? (
+              <Text selectable style={[s.cardCopy, { color: colors.amber }]}>Solicitud pendiente de revisión por el administrador.</Text>
+            ) : passwordRequest?.status === 'aprobada' ? (
+              <>
+                <Text selectable style={[s.cardCopy, { color: colors.green }]}>Solicitud aprobada. Puedes cambiarla durante las próximas 72 horas.</Text>
+                <Field label="Contraseña actual" value={passwords.current} onChangeText={(current) => setPasswords((prev) => ({ ...prev, current }))} theme={state.theme} secureTextEntry />
+                <Field label="Nueva contraseña" value={passwords.next} onChangeText={(next) => setPasswords((prev) => ({ ...prev, next }))} theme={state.theme} secureTextEntry />
+                <Field label="Confirmar contraseña" value={passwords.confirm} onChangeText={(confirm) => setPasswords((prev) => ({ ...prev, confirm }))} theme={state.theme} secureTextEntry />
+                <PrimaryButton label={passwordBusy ? 'Actualizando...' : 'Cambiar contraseña'} onPress={completePasswordChange} />
+              </>
+            ) : (
+              <>
+                {passwordRequest?.status === 'rechazada' ? <Text selectable style={[s.cardCopy, { color: colors.red }]}>La solicitud anterior fue rechazada. Puedes enviar una nueva.</Text> : null}
+                <Field label="Motivo de la solicitud (opcional)" value={requestReason} onChangeText={setRequestReason} theme={state.theme} />
+                <PrimaryButton label={passwordBusy ? 'Enviando...' : 'Solicitar cambio al administrador'} onPress={requestPasswordChange} />
+              </>
+            )}
+          </View>
           <OutlineButton label="Aviso de privacidad" theme={state.theme} onPress={() => state.notify('Aviso de privacidad abierto')} />
           <OutlineButton label="Solicitar mis datos" theme={state.theme} onPress={() => state.notify('Solicitud registrada')} />
         </>

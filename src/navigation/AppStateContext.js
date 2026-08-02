@@ -61,7 +61,10 @@ function whatsappPhone(value = '') {
 }
 
 export function AppStateProvider({ children }) {
-  const [themeMode, setThemeMode] = useState('light');
+  const [themeMode, setThemeMode] = useState(() => {
+    try { return globalThis.localStorage?.getItem('hr_theme_mode') || 'light'; }
+    catch { return 'light'; }
+  });
   const [loggedIn, setLoggedIn] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
@@ -110,12 +113,14 @@ export function AppStateProvider({ children }) {
     { id: 2, patient_id: 1, type: 'Presupuesto', title: 'Plan restaurativo', date: '2026-05-20', detail: 'Total estimado $3,750 MXN.', status: 'Aceptado' },
     { id: 3, patient_id: 1, type: 'Consentimiento', title: 'Consentimiento para restauración', date: '2026-06-18', detail: 'Documento aceptado digitalmente.', status: 'Firmado' },
   ]);
-  const [patientPreferences, setPatientPreferences] = useState({
-    push: true,
-    email: true,
-    whatsapp: true,
-    appointmentReminders: true,
-    paymentReminders: true,
+  const [patientPreferences, setPatientPreferences] = useState(() => {
+    const defaults = { push: true, email: true, whatsapp: true, appointmentReminders: true, paymentReminders: true };
+    try { return { ...defaults, ...JSON.parse(globalThis.localStorage?.getItem('hr_patient_preferences') || '{}') }; }
+    catch { return defaults; }
+  });
+  const [staffNotificationsEnabled, setStaffNotificationsEnabled] = useState(() => {
+    try { return globalThis.localStorage?.getItem('hr_staff_notifications') !== 'false'; }
+    catch { return true; }
   });
   const [followUps, setFollowUps] = useState([
     {
@@ -212,6 +217,12 @@ export function AppStateProvider({ children }) {
     } finally {
       if (!silent) setDataLoading(false);
     }
+  };
+
+  const refreshDashboard = async () => {
+    const result = await resources.dashboard();
+    setDashboardData(result);
+    return result;
   };
 
   const hydratePatientData = async (patientId) => {
@@ -357,7 +368,7 @@ export function AppStateProvider({ children }) {
         if (user.role === 'patient' && user.patient_id) {
           setCurrentPatientId(user.patient_id);
           await hydratePatientData(user.patient_id);
-        } else if (user.role === 'dentist') {
+        } else if (['admin', 'dentist'].includes(user.role)) {
           await hydrateStaffData();
         }
         setLoggedIn(true);
@@ -373,7 +384,7 @@ export function AppStateProvider({ children }) {
       syncing = true;
       try {
         if (currentRole === 'patient' && currentPatientId) await hydratePatientData(currentPatientId);
-        else if (currentRole === 'dentist') await hydrateStaffData({ silent: true });
+        else if (['admin', 'dentist'].includes(currentRole)) await hydrateStaffData({ silent: true });
       } catch {
         // Conserva la última información válida y vuelve a intentar en el siguiente ciclo.
       } finally {
@@ -400,6 +411,18 @@ export function AppStateProvider({ children }) {
       // El estado sigue disponible en memoria cuando el almacenamiento no existe.
     }
   }, [emergencyVisibility, patients, currentPatientId]);
+
+  useEffect(() => {
+    try { globalThis.localStorage?.setItem('hr_theme_mode', themeMode); } catch {}
+  }, [themeMode]);
+
+  useEffect(() => {
+    try { globalThis.localStorage?.setItem('hr_patient_preferences', JSON.stringify(patientPreferences)); } catch {}
+  }, [patientPreferences]);
+
+  useEffect(() => {
+    try { globalThis.localStorage?.setItem('hr_staff_notifications', String(staffNotificationsEnabled)); } catch {}
+  }, [staffNotificationsEnabled]);
 
   const theme = themes[themeMode];
   const filteredPatients = patients.filter((p) => p.name.toLowerCase().includes(search.toLowerCase()));
@@ -439,6 +462,7 @@ export function AppStateProvider({ children }) {
           ? { ...appointment, ...changes, ...updated, status: changes.status || appointment.status, color: appointmentColor(changes.status || updated.status) }
           : appointment
       )));
+      if (currentRole !== 'patient') refreshDashboard().catch(() => {});
       notify(changes.status ? `Cita ${changes.status.toLowerCase()}` : 'Cita actualizada');
       return updated;
     } catch (error) {
@@ -685,7 +709,8 @@ export function AppStateProvider({ children }) {
         }
       : null,
   ].filter(Boolean);
-  const notificationItems = notifications;
+  const notificationsEnabled = currentRole === 'patient' ? patientPreferences.push : staffNotificationsEnabled;
+  const notificationItems = notificationsEnabled ? notifications : [];
   const unreadNotificationCount = notificationItems.filter((item) => !item.is_read).length;
 
   const openNotifications = () => {
@@ -712,6 +737,7 @@ export function AppStateProvider({ children }) {
     try {
       const created = await resources.createPatient(form);
       setPatients((prev) => [mapPatient(created), ...prev]);
+      refreshDashboard().catch(() => {});
       setSheet(null);
       notify('Paciente agregado');
       return created;
@@ -728,6 +754,7 @@ export function AppStateProvider({ children }) {
       setPatients((prev) => prev.map((patient) => patient.id === id ? { ...patient, ...mapped, balance: patient.balance, next: patient.next } : patient));
       setAppointments((prev) => prev.map((appointment) => appointment.patient_id === id ? { ...appointment, patient: mapped.name, name: mapped.name } : appointment));
       setPayments((prev) => prev.map((payment) => payment.patient_id === id ? { ...payment, patient: mapped.name, phone: mapped.phone, tag: mapped.tag } : payment));
+      refreshDashboard().catch(() => {});
       setSheet(null);
       notify('Expediente actualizado');
       return updated;
@@ -749,6 +776,7 @@ export function AppStateProvider({ children }) {
         return next;
       });
       if (selectedClinicalPatientId === id) setSelectedClinicalPatientId('');
+      refreshDashboard().catch(() => {});
       setSheet(null);
       notify('Paciente eliminado');
     } catch (error) {
@@ -780,6 +808,7 @@ export function AppStateProvider({ children }) {
         last_name_paternal: patient?.last_name_paternal,
         service_name: service?.name,
       }), ...prev]);
+      refreshDashboard().catch(() => {});
       setSheet(null);
       notify('Cita programada');
       return created;
@@ -954,6 +983,7 @@ export function AppStateProvider({ children }) {
       });
       setPayments((prev) => [mapped, ...prev]);
       setPatients((prev) => prev.map((patient) => patient.id === mapped.patient_id ? { ...patient, balance: Number(patient.balance || 0) + mapped.pending } : patient));
+      refreshDashboard().catch(() => {});
       setSheet(null);
       notify(`Pago de ${formatMoney(total)} registrado`);
       return created;
@@ -981,6 +1011,7 @@ export function AppStateProvider({ children }) {
       const mapped = mapPayment({ ...updated, first_name: target.patient.split(' ')[0], last_name_paternal: target.patient.split(' ').slice(1).join(' ') });
       setPayments((prev) => prev.map((payment) => payment.id === paymentId ? mapped : payment));
       setPatients((prev) => prev.map((patient) => patient.id === target.patient_id ? { ...patient, balance: Math.max(0, Number(patient.balance || 0) - amount) } : patient));
+      refreshDashboard().catch(() => {});
       setSheet(null);
       notify(`Abono de ${formatMoney(amount)} registrado`);
       return updated;
@@ -999,6 +1030,7 @@ export function AppStateProvider({ children }) {
       const remainingPending = nextPayments.filter((payment) => payment.patient_id === target.patient_id).reduce((sum, payment) => sum + Number(payment.pending || 0), 0);
       setPayments(nextPayments);
       setPatients((prev) => prev.map((patient) => patient.id === target.patient_id ? { ...patient, balance: remainingPending } : patient));
+      refreshDashboard().catch(() => {});
       setSheet(null);
       notify('Pago eliminado');
     } catch (error) {
@@ -1052,6 +1084,8 @@ export function AppStateProvider({ children }) {
     patientDocuments,
     patientPreferences,
     setPatientPreferences,
+    staffNotificationsEnabled,
+    setStaffNotificationsEnabled,
     followUps,
     setFollowUps,
     emergencyVisibility,
@@ -1114,6 +1148,7 @@ export function AppStateProvider({ children }) {
     treatmentPlans,
     patientDocuments,
     patientPreferences,
+    staffNotificationsEnabled,
     followUps,
     emergencyVisibility,
     calendarEvents,

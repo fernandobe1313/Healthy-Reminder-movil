@@ -6,6 +6,7 @@ import { colors } from '../theme/palette';
 import { styles } from '../styles';
 import { AppLogo, GradientButton, Input, LedText, SettingRow } from '../components/common';
 import { useVisualEffects } from '../theme/visual-effects';
+import { resources } from '../api/resources';
 
 const defaultLogo = require('../../assets/logoHR.png');
 
@@ -123,12 +124,12 @@ function SelectField({ label, value, placeholder, theme, icon, meta, onPress }) 
   );
 }
 
-export function SettingsScreen({ theme, themeMode, setThemeMode, onLogout, notify }) {
+export function SettingsScreen({ theme, themeMode, setThemeMode, onLogout, notify, currentUser, notificationsEnabled, setNotificationsEnabled }) {
   const [activeTab, setActiveTab] = useState('clinic');
   const [selector, setSelector] = useState(null);
   const [logoSheetOpen, setLogoSheetOpen] = useState(false);
-  const [notifications, setNotifications] = useState(true);
-  const [sync, setSync] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const { ledEnabled, setLedEnabled } = useVisualEffects();
   const { width } = useWindowDimensions();
   const compact = width < 430;
@@ -162,11 +163,119 @@ export function SettingsScreen({ theme, themeMode, setThemeMode, onLogout, notif
     next: '',
     confirm: '',
   });
+  const [passwordRequest, setPasswordRequest] = useState(null);
+  const [requestReason, setRequestReason] = useState('');
+  const [passwordBusy, setPasswordBusy] = useState(false);
+
+  useEffect(() => {
+    if (activeTab !== 'security') return;
+    resources.myPasswordChangeRequest().then(setPasswordRequest).catch((error) => notify?.(error.message));
+  }, [activeTab]);
+
+  const requestPasswordChange = async () => {
+    setPasswordBusy(true);
+    try {
+      setPasswordRequest(await resources.requestPasswordChange({ reason: requestReason.trim() }));
+      setRequestReason('');
+      notify?.('Solicitud enviada al administrador');
+    } catch (error) { notify?.(error.message); }
+    finally { setPasswordBusy(false); }
+  };
+
+  const completePasswordChange = async () => {
+    if (!passwords.current || passwords.next.length < 8 || !/[A-Za-z]/.test(passwords.next) || !/\d/.test(passwords.next) || passwords.next !== passwords.confirm) {
+      notify?.('La contraseña debe coincidir y tener 8 caracteres, una letra y un número');
+      return;
+    }
+    setPasswordBusy(true);
+    try {
+      await resources.changePassword({ current_password: passwords.current, new_password: passwords.next });
+      setPasswords({ current: '', next: '', confirm: '' });
+      setPasswordRequest(await resources.myPasswordChangeRequest());
+      notify?.('Contraseña actualizada');
+    } catch (error) { notify?.(error.message); }
+    finally { setPasswordBusy(false); }
+  };
+
+  useEffect(() => {
+    let active = true;
+    resources.config()
+      .then((config) => {
+        if (!active) return;
+        const country = config.country || 'Mexico';
+        const countryMatch = Country.getAllCountries().find((item) => (
+          normalizeSearchText(item.name) === normalizeSearchText(country)
+          || (item.isoCode === 'MX' && ['mexico', 'me xico'].includes(normalizeSearchText(country)))
+        ));
+        setClinic({
+          logo_url: config.logo_url || '',
+          name: config.clinic_name || '',
+          owner: config.owner_name || '',
+          phone: config.phone || '',
+          email: config.email || '',
+          street: config.street || '',
+          extNumber: config.ext_number || '',
+          intNumber: config.int_number || '',
+          neighborhood: config.neighborhood || '',
+          city: config.city || '',
+          state: config.state || '',
+          country,
+          countryCode: countryMatch?.isoCode || 'MX',
+          zip: config.zip_code || '',
+          currency: config.currency || 'MXN',
+          policies: config.internal_policies || '',
+        });
+        setHours({
+          open: config.opening_time || '08:00',
+          close: config.closing_time || '20:00',
+          duration: String(config.default_appointment_duration || 30),
+        });
+      })
+      .catch((error) => notify?.(error.message))
+      .finally(() => active && setLoading(false));
+    return () => { active = false; };
+  }, []);
 
   const updateClinic = (key, value) => setClinic((prev) => ({ ...prev, [key]: value }));
   const updateHours = (key, value) => setHours((prev) => ({ ...prev, [key]: value }));
   const updatePassword = (key, value) => setPasswords((prev) => ({ ...prev, [key]: value }));
-  const save = (message = 'Configuracion guardada') => notify?.(message);
+  const configPayload = () => ({
+    clinic_name: clinic.name.trim(),
+    owner_name: clinic.owner.trim(),
+    phone: clinic.phone.trim(),
+    email: clinic.email.trim(),
+    street: clinic.street.trim(),
+    ext_number: clinic.extNumber.trim(),
+    int_number: clinic.intNumber.trim(),
+    neighborhood: clinic.neighborhood.trim(),
+    city: clinic.city.trim(),
+    state: clinic.state.trim(),
+    country: clinic.country.trim(),
+    zip_code: clinic.zip.trim(),
+    opening_time: hours.open.trim(),
+    closing_time: hours.close.trim(),
+    default_appointment_duration: Number(hours.duration) || 30,
+    currency: clinic.currency.trim() || 'MXN',
+    internal_policies: clinic.policies.trim(),
+    logo_url: clinic.logo_url,
+  });
+
+  const saveConfig = async (message) => {
+    if (!clinic.name.trim()) {
+      notify?.('El nombre del consultorio es obligatorio');
+      return;
+    }
+    setSaving(true);
+    try {
+      const updated = await resources.updateConfig(configPayload());
+      setClinic((prev) => ({ ...prev, logo_url: updated.logo_url ?? prev.logo_url }));
+      notify?.(message);
+    } catch (error) {
+      notify?.(error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const countries = useMemo(
     () =>
@@ -217,14 +326,16 @@ export function SettingsScreen({ theme, themeMode, setThemeMode, onLogout, notif
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.9,
+      quality: 0.7,
+      base64: true,
     };
     const result = source === 'camera'
       ? await ImagePicker.launchCameraAsync(options)
       : await ImagePicker.launchImageLibraryAsync(options);
 
     if (!result.canceled && result.assets?.[0]?.uri) {
-      updateClinic('logo_url', result.assets[0].uri);
+      const asset = result.assets[0];
+      updateClinic('logo_url', asset.base64 ? `data:${asset.mimeType || 'image/jpeg'};base64,${asset.base64}` : asset.uri);
       setLogoSheetOpen(false);
       notify?.('Logo actualizado');
     }
@@ -237,7 +348,7 @@ export function SettingsScreen({ theme, themeMode, setThemeMode, onLogout, notif
   };
 
   const renderSaveButton = (label, onPress) => (
-    <GradientButton label={label} right="" onPress={onPress} style={[styles.settingsSaveButton, compact && styles.settingsSaveButtonCompact]} />
+    <GradientButton label={saving ? 'Guardando...' : label} right="" onPress={onPress} disabled={saving || loading} style={[styles.settingsSaveButton, compact && styles.settingsSaveButtonCompact]} />
   );
 
   const renderResponsivePair = (first, second) => (
@@ -254,7 +365,7 @@ export function SettingsScreen({ theme, themeMode, setThemeMode, onLogout, notif
           <Text selectable style={[styles.sectionTitle, { color: theme.text }]}>Datos del consultorio</Text>
           <Text selectable style={[styles.cardSub, { color: theme.muted }]}>Informacion que aparecera en documentos y reportes.</Text>
         </View>
-        {renderSaveButton('Guardar', () => save('Datos del consultorio guardados'))}
+        {renderSaveButton('Guardar', () => saveConfig('Datos del consultorio guardados'))}
       </View>
 
       <View style={[styles.settingsLogoCard, { backgroundColor: theme.input, borderColor: theme.line }]}>
@@ -324,18 +435,11 @@ export function SettingsScreen({ theme, themeMode, setThemeMode, onLogout, notif
           <Text selectable style={[styles.sectionTitle, { color: theme.text }]}>Horarios de atencion</Text>
           <Text selectable style={[styles.cardSub, { color: theme.muted }]}>Controla rangos y duracion base de citas.</Text>
         </View>
-        {renderSaveButton('Guardar', () => save('Horarios guardados'))}
+        {renderSaveButton('Guardar', () => saveConfig('Horarios guardados'))}
       </View>
       <Input label="Hora de apertura" value={hours.open} onChangeText={(value) => updateHours('open', value)} theme={theme} icon="A" placeholder="08:00" />
       <Input label="Hora de cierre" value={hours.close} onChangeText={(value) => updateHours('close', value)} theme={theme} icon="C" placeholder="20:00" />
       <Input label="Duracion predeterminada (min)" value={hours.duration} onChangeText={(value) => updateHours('duration', value.replace(/\D/g, '').slice(0, 3))} theme={theme} icon="D" placeholder="30" keyboardType="number-pad" />
-      <View style={[styles.formSectionTitleWrap, { borderColor: theme.line }]}>
-        <Text selectable style={styles.formSectionTitle}>Bloque de comida</Text>
-      </View>
-      {renderResponsivePair(
-        <Input label="Inicio" value={hours.lunchStart} onChangeText={(value) => updateHours('lunchStart', value)} theme={theme} icon="I" placeholder="14:00" />,
-        <Input label="Fin" value={hours.lunchEnd} onChangeText={(value) => updateHours('lunchEnd', value)} theme={theme} icon="F" placeholder="15:00" />
-      )}
     </View>
   );
 
@@ -350,33 +454,44 @@ export function SettingsScreen({ theme, themeMode, setThemeMode, onLogout, notif
 
       <View style={[styles.settingsUserBand, { backgroundColor: theme.input }]}>
         <Text selectable style={[styles.cardSub, { color: theme.muted }]}>Usuario actual</Text>
-        <Text selectable numberOfLines={2} style={[styles.cardTitle, { color: theme.text }]}>admin - admin@healthyreminder.com</Text>
+        <Text selectable numberOfLines={2} style={[styles.cardTitle, { color: theme.text }]}>{currentUser?.username || 'Usuario'} - {currentUser?.email || 'Sin correo'}</Text>
       </View>
 
       <SettingRow theme={theme} title="Modo oscuro" subtitle="Adapta la paleta como en la web" value={themeMode === 'dark'} onValueChange={(value) => setThemeMode(value ? 'dark' : 'light')} />
       <SettingRow theme={theme} title="Efecto LED" subtitle="Movimiento de colores en botones y textos destacados" value={ledEnabled} onValueChange={setLedEnabled} />
-      <SettingRow theme={theme} title="Notificaciones" subtitle="Citas, pagos y recordatorios" value={notifications} onValueChange={setNotifications} />
-      <SettingRow theme={theme} title="Sincronizacion" subtitle="Preparado para conectar API" value={sync} onValueChange={setSync} />
+      <SettingRow theme={theme} title="Notificaciones internas" subtitle="Muestra citas, pagos, seguimientos y recordatorios dentro de la app" value={notificationsEnabled} onValueChange={setNotificationsEnabled} />
 
       <View style={[styles.formSectionTitleWrap, { borderColor: theme.line }]}>
-        <Text selectable style={styles.formSectionTitle}>Cambiar contrasena</Text>
+        <Text selectable style={styles.formSectionTitle}>{currentUser?.role === 'admin' ? 'Cambiar mi contraseña' : 'Cambio de contraseña supervisado'}</Text>
       </View>
-      <Input label="Contrasena actual" value={passwords.current} onChangeText={(value) => updatePassword('current', value)} theme={theme} icon="*" placeholder="Actual" secureTextEntry />
-      <Input label="Nueva contrasena" value={passwords.next} onChangeText={(value) => updatePassword('next', value)} theme={theme} icon="*" placeholder="Nueva" secureTextEntry />
-      <Input label="Confirmar contrasena" value={passwords.confirm} onChangeText={(value) => updatePassword('confirm', value)} theme={theme} icon="*" placeholder="Confirmar" secureTextEntry />
-      <GradientButton
-        label="Cambiar contrasena"
-        right=""
-        style={compact && styles.settingsSaveButtonCompact}
-        onPress={() => {
-          if (!passwords.next || passwords.next !== passwords.confirm) {
-            notify?.('Revisa la nueva contrasena');
-            return;
-          }
-          setPasswords({ current: '', next: '', confirm: '' });
-          save('Contrasena actualizada');
-        }}
-      />
+      {currentUser?.role === 'admin' ? (
+        <>
+          <Text selectable style={[styles.cardSub, { color: theme.muted }]}>Como administrador puedes cambiar tu contraseña directamente.</Text>
+          <Input label="Contraseña actual" value={passwords.current} onChangeText={(value) => updatePassword('current', value)} theme={theme} icon="*" placeholder="Actual" secureTextEntry />
+          <Input label="Nueva contraseña" value={passwords.next} onChangeText={(value) => updatePassword('next', value)} theme={theme} icon="*" placeholder="Nueva" secureTextEntry />
+          <Input label="Confirmar contraseña" value={passwords.confirm} onChangeText={(value) => updatePassword('confirm', value)} theme={theme} icon="*" placeholder="Confirmar" secureTextEntry />
+          <GradientButton label={passwordBusy ? 'Actualizando...' : 'Cambiar contraseña'} right="" style={compact && styles.settingsSaveButtonCompact} onPress={completePasswordChange} disabled={passwordBusy} />
+        </>
+      ) : (
+        <Text selectable style={[styles.cardSub, { color: theme.muted }]}>El administrador debe aprobar la solicitud antes de permitir el cambio.</Text>
+      )}
+      {currentUser?.role !== 'admin' && passwordRequest?.status === 'pendiente' ? (
+        <Text selectable style={[styles.cardSub, { color: colors.amber }]}>Solicitud pendiente de revisión.</Text>
+      ) : currentUser?.role !== 'admin' && passwordRequest?.status === 'aprobada' ? (
+        <>
+          <Text selectable style={[styles.cardSub, { color: colors.green }]}>Solicitud aprobada por 72 horas.</Text>
+          <Input label="Contraseña actual" value={passwords.current} onChangeText={(value) => updatePassword('current', value)} theme={theme} icon="*" placeholder="Actual" secureTextEntry />
+          <Input label="Nueva contraseña" value={passwords.next} onChangeText={(value) => updatePassword('next', value)} theme={theme} icon="*" placeholder="Nueva" secureTextEntry />
+          <Input label="Confirmar contraseña" value={passwords.confirm} onChangeText={(value) => updatePassword('confirm', value)} theme={theme} icon="*" placeholder="Confirmar" secureTextEntry />
+          <GradientButton label={passwordBusy ? 'Actualizando...' : 'Cambiar contraseña'} right="" style={compact && styles.settingsSaveButtonCompact} onPress={completePasswordChange} disabled={passwordBusy} />
+        </>
+      ) : currentUser?.role !== 'admin' ? (
+        <>
+          {passwordRequest?.status === 'rechazada' ? <Text selectable style={[styles.cardSub, { color: colors.red }]}>La solicitud anterior fue rechazada. Puedes enviar otra.</Text> : null}
+          <Input label="Motivo (opcional)" value={requestReason} onChangeText={setRequestReason} theme={theme} icon="?" placeholder="Motivo del cambio" />
+          <GradientButton label={passwordBusy ? 'Enviando...' : 'Solicitar cambio al administrador'} right="" style={compact && styles.settingsSaveButtonCompact} onPress={requestPasswordChange} disabled={passwordBusy} />
+        </>
+      ) : null}
     </View>
   );
 

@@ -2,6 +2,13 @@ import { api } from './client';
 
 export const resources = {
   dashboard: () => api.get('/dashboard'),
+  config: () => api.get('/config'),
+  updateConfig: (body) => api.put('/config', body),
+  changePassword: (body) => api.put('/auth/change-password', body),
+  requestPasswordChange: (body) => api.post('/auth/password-change-requests', body),
+  myPasswordChangeRequest: () => api.get('/auth/password-change-requests/me'),
+  passwordChangeRequests: () => api.get('/auth/password-change-requests'),
+  reviewPasswordChangeRequest: (id, status) => api.put(`/auth/password-change-requests/${id}`, { status }),
   patients: () => api.get('/patients?limit=500'),
   createPatient: (body) => api.post('/patients', body),
   updatePatient: (id, body) => api.put(`/patients/${id}`, body),

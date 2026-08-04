@@ -129,7 +129,7 @@ function SelectField({ label, value, placeholder, theme, icon, meta, onPress }) 
   );
 }
 
-export function SettingsScreen({ theme, themeMode, setThemeMode, onLogout, notify, currentUser, notificationsEnabled, setNotificationsEnabled }) {
+export function SettingsScreen({ theme, themeMode, setThemeMode, onLogout, notify, currentUser, notificationsEnabled, setNotificationsEnabled, biometricEnabled, biometricCapability, setBiometricEnabled }) {
   const [activeTab, setActiveTab] = useState('clinic');
   const [selector, setSelector] = useState(null);
   const [logoSheetOpen, setLogoSheetOpen] = useState(false);
@@ -481,6 +481,13 @@ export function SettingsScreen({ theme, themeMode, setThemeMode, onLogout, notif
       <SettingRow theme={theme} title="Modo oscuro" subtitle="Adapta la paleta como en la web" value={themeMode === 'dark'} onValueChange={(value) => setThemeMode(value ? 'dark' : 'light')} />
       <SettingRow theme={theme} title="Efecto LED" subtitle="Movimiento de colores en botones y textos destacados" value={ledEnabled} onValueChange={setLedEnabled} />
       <SettingRow theme={theme} title="Notificaciones internas" subtitle="Muestra citas, pagos, seguimientos y recordatorios dentro de la app" value={notificationsEnabled} onValueChange={setNotificationsEnabled} />
+      <SettingRow
+        theme={theme}
+        title="Acceso biométrico"
+        subtitle={biometricCapability?.available ? `Desbloquea con ${biometricCapability.label}; el sistema permite usar la credencial del dispositivo como respaldo` : 'Configura huella, rostro, PIN, patrón o contraseña en el dispositivo'}
+        value={biometricEnabled}
+        onValueChange={setBiometricEnabled}
+      />
 
       <View style={[styles.formSectionTitleWrap, { borderColor: theme.line }]}>
         <Text selectable style={styles.formSectionTitle}>{currentUser?.role === 'admin' ? 'Cambiar mi contraseña' : 'Cambio de contraseña supervisado'}</Text>

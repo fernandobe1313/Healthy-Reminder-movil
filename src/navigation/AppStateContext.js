@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Linking } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import 'expo-sqlite/localStorage/install';
@@ -7,6 +7,8 @@ import { colors, themes } from '../theme/palette';
 import { loginMobile, logoutMobile, restoreMobileSession } from '../api/auth';
 import { api } from '../api/client';
 import { resources } from '../api/resources';
+import { authenticateDeviceOwner, getDeviceAuthCapability, isDeviceAuthEnabled, setDeviceAuthPreference } from '../native/biometric-auth';
+import { BiometricLockScreen } from '../screens/BiometricLockScreen';
 import {
   appointmentColor,
   mapAppointment,
@@ -68,6 +70,12 @@ export function AppStateProvider({ children }) {
   const [loggedIn, setLoggedIn] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
+  const [biometricEnabled, setBiometricEnabledState] = useState(false);
+  const [biometricLocked, setBiometricLocked] = useState(false);
+  const [biometricBusy, setBiometricBusy] = useState(false);
+  const [biometricError, setBiometricError] = useState('');
+  const [biometricCapability, setBiometricCapability] = useState({ available: false, label: 'Seguridad del dispositivo' });
+  const backgroundAtRef = useRef(0);
   const [currentRole, setCurrentRole] = useState('dentist');
   const [currentPatientId, setCurrentPatientId] = useState(1);
   const [selectedDay, setSelectedDay] = useState('Lun');
@@ -378,6 +386,11 @@ export function AppStateProvider({ children }) {
         if (!user) return;
         setCurrentUser(user);
         setCurrentRole(user.role);
+        const userKey = user.id || user.username;
+        const [enabled, capability] = await Promise.all([isDeviceAuthEnabled(userKey), getDeviceAuthCapability()]);
+        setBiometricEnabledState(enabled);
+        setBiometricCapability(capability);
+        setBiometricLocked(enabled);
         if (user.role === 'patient' && user.patient_id) {
           setCurrentPatientId(user.patient_id);
           await hydratePatientData(user.patient_id);
@@ -388,6 +401,67 @@ export function AppStateProvider({ children }) {
       })
       .finally(() => setAuthLoading(false));
   }, []);
+
+  const unlockWithDevice = useCallback(async () => {
+    if (biometricBusy) return false;
+    setBiometricBusy(true);
+    setBiometricError('');
+    try {
+      const result = await authenticateDeviceOwner();
+      if (result.capability) setBiometricCapability(result.capability);
+      if (result.success) {
+        setBiometricLocked(false);
+        return true;
+      }
+      if (!['user_cancel', 'app_cancel', 'system_cancel'].includes(result.error)) {
+        setBiometricError(result.error === 'not_available' || result.error === 'not_enrolled'
+          ? 'Configura una huella, rostro, PIN, patrón o contraseña en el dispositivo.'
+          : 'No fue posible confirmar tu identidad. Inténtalo nuevamente.');
+      }
+      return false;
+    } finally {
+      setBiometricBusy(false);
+    }
+  }, [biometricBusy]);
+
+  const setBiometricEnabled = useCallback(async (enabled) => {
+    const userKey = currentUser?.id || currentUser?.username;
+    if (!userKey) return false;
+    if (!enabled) {
+      await setDeviceAuthPreference(userKey, false);
+      setBiometricEnabledState(false);
+      setBiometricLocked(false);
+      notify('Acceso biométrico desactivado');
+      return true;
+    }
+    const capability = await getDeviceAuthCapability();
+    setBiometricCapability(capability);
+    if (!capability.available) {
+      notify('Configura la seguridad del dispositivo antes de activar esta opción');
+      return false;
+    }
+    const result = await authenticateDeviceOwner();
+    if (!result.success) {
+      notify('No se activó: no fue posible confirmar tu identidad');
+      return false;
+    }
+    await setDeviceAuthPreference(userKey, true);
+    setBiometricEnabledState(true);
+    notify(`Acceso con ${capability.label} activado`);
+    return true;
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!loggedIn || !biometricEnabled) return undefined;
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'background' || nextState === 'inactive') backgroundAtRef.current = Date.now();
+      if (nextState === 'active' && backgroundAtRef.current && Date.now() - backgroundAtRef.current > 15000) {
+        setBiometricError('');
+        setBiometricLocked(true);
+      }
+    });
+    return () => subscription.remove();
+  }, [loggedIn, biometricEnabled]);
 
   useEffect(() => {
     if (!loggedIn || sheet) return undefined;
@@ -455,12 +529,18 @@ export function AppStateProvider({ children }) {
       await hydratePatientData(user.patient_id);
     } else await hydrateStaffData();
     setLoggedIn(true);
+    setBiometricLocked(false);
+    const capability = await getDeviceAuthCapability();
+    setBiometricCapability(capability);
+    setBiometricEnabledState(await isDeviceAuthEnabled(user.id || user.username));
     return user;
   };
 
   const logout = async () => {
     await logoutMobile();
     setLoggedIn(false);
+    setBiometricLocked(false);
+    setBiometricError('');
     setCurrentUser(null);
     setSheet(null);
   };
@@ -1076,6 +1156,9 @@ export function AppStateProvider({ children }) {
     loggedIn,
     authLoading,
     currentUser,
+    biometricEnabled,
+    biometricCapability,
+    setBiometricEnabled,
     dataLoading,
     dashboardData,
     serviceCatalog,
@@ -1157,6 +1240,9 @@ export function AppStateProvider({ children }) {
     loggedIn,
     authLoading,
     currentUser,
+    biometricEnabled,
+    biometricCapability,
+    setBiometricEnabled,
     dataLoading,
     dashboardData,
     serviceCatalog,
@@ -1188,7 +1274,21 @@ export function AppStateProvider({ children }) {
     notifications,
   ]);
 
-  return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
+  return (
+    <AppStateContext.Provider value={value}>
+      {biometricLocked ? (
+        <BiometricLockScreen
+          theme={theme}
+          user={currentUser}
+          capability={biometricCapability}
+          busy={biometricBusy}
+          error={biometricError}
+          onUnlock={unlockWithDevice}
+          onUseAccountPassword={logout}
+        />
+      ) : children}
+    </AppStateContext.Provider>
+  );
 }
 
 export function useAppState() {

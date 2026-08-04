@@ -149,6 +149,22 @@ export function PatientProfileScreen() {
             </View>
           ))}
           <SectionTitle theme={state.theme}>Seguridad de la cuenta</SectionTitle>
+          <View style={[s.card, s.between, { backgroundColor: state.theme.card, borderColor: state.theme.line }]}>
+            <View style={{ flex: 1, gap: 5 }}>
+              <Text selectable style={[s.cardTitle, { color: state.theme.text }]}>Acceso biométrico</Text>
+              <Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>
+                {state.biometricCapability?.available
+                  ? `Desbloquea con ${state.biometricCapability.label}; puedes usar la credencial del dispositivo como respaldo.`
+                  : 'Configura huella, rostro, PIN, patrón o contraseña en este dispositivo.'}
+              </Text>
+            </View>
+            <Switch
+              value={state.biometricEnabled}
+              onValueChange={state.setBiometricEnabled}
+              trackColor={{ false: state.theme.line, true: `${colors.blue}80` }}
+              thumbColor={state.biometricEnabled ? colors.blue : '#f8fafc'}
+            />
+          </View>
           <View style={[s.card, { backgroundColor: state.theme.card, borderColor: state.theme.line }]}>
             <Text selectable style={[s.cardTitle, { color: state.theme.text }]}>Cambio de contraseña supervisado</Text>
             <Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>Envía una solicitud. Por seguridad, solo el administrador puede establecer una nueva contraseña para tu cuenta.</Text>

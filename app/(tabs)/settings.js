@@ -15,6 +15,9 @@ export default function SettingsRoute() {
       currentUser={state.currentUser}
       notificationsEnabled={state.staffNotificationsEnabled}
       setNotificationsEnabled={state.setStaffNotificationsEnabled}
+      biometricEnabled={state.biometricEnabled}
+      biometricCapability={state.biometricCapability}
+      setBiometricEnabled={state.setBiometricEnabled}
     />
   );
 }

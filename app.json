@@ -52,7 +52,13 @@
           "calendarPermission": "HealthyReminder necesita acceso para agregar y actualizar tus citas dentales."
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "HealthyReminder usa Face ID para proteger el acceso a tu información clínica."
+        }
+      ]
     ],
     "extra": {
       "router": {},

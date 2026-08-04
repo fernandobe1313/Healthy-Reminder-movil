@@ -391,13 +391,15 @@ export function AppStateProvider({ children }) {
         setBiometricEnabledState(enabled);
         setBiometricCapability(capability);
         setBiometricLocked(enabled);
+        setLoggedIn(true);
         if (user.role === 'patient' && user.patient_id) {
           setCurrentPatientId(user.patient_id);
-          await hydratePatientData(user.patient_id);
+          try { await hydratePatientData(user.patient_id); }
+          catch { notify('Sesión iniciada. Reintentando sincronizar tu expediente.'); }
         } else if (['admin', 'dentist'].includes(user.role)) {
-          await hydrateStaffData();
+          try { await hydrateStaffData(); }
+          catch { notify('Sesión iniciada. Reintentando sincronizar los datos.'); }
         }
-        setLoggedIn(true);
       })
       .finally(() => setAuthLoading(false));
   }, []);
@@ -524,12 +526,21 @@ export function AppStateProvider({ children }) {
     const user = await loginMobile(username, password);
     setCurrentUser(user);
     setCurrentRole(user.role);
-    if (user.role === 'patient') {
-      setCurrentPatientId(user.patient_id);
-      await hydratePatientData(user.patient_id);
-    } else await hydrateStaffData();
     setLoggedIn(true);
     setBiometricLocked(false);
+    if (user.role === 'patient') {
+      if (!user.patient_id) {
+        await logoutMobile();
+        setLoggedIn(false);
+        throw new Error('La cuenta no está vinculada a un expediente. Solicita al administrador que revise el acceso móvil.');
+      }
+      setCurrentPatientId(user.patient_id);
+      try { await hydratePatientData(user.patient_id); }
+      catch { notify('Acceso correcto. Los datos se sincronizarán automáticamente.'); }
+    } else {
+      try { await hydrateStaffData(); }
+      catch { notify('Acceso correcto. Los datos se sincronizarán automáticamente.'); }
+    }
     const capability = await getDeviceAuthCapability();
     setBiometricCapability(capability);
     setBiometricEnabledState(await isDeviceAuthEnabled(user.id || user.username));

@@ -88,7 +88,6 @@ export function PatientProfileScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <Text selectable style={[s.title, { color: state.theme.text }]}>{state.currentPatient?.name}</Text>
-            <Text selectable style={[s.subtitle, { color: state.theme.muted }]}>Expediente #{state.currentPatientId}</Text>
           </View>
         </View>
       </View>

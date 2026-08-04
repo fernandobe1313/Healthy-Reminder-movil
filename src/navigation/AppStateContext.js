@@ -541,9 +541,13 @@ export function AppStateProvider({ children }) {
       try { await hydrateStaffData(); }
       catch { notify('Acceso correcto. Los datos se sincronizarán automáticamente.'); }
     }
-    const capability = await getDeviceAuthCapability();
-    setBiometricCapability(capability);
-    setBiometricEnabledState(await isDeviceAuthEnabled(user.id || user.username));
+    try {
+      const capability = await getDeviceAuthCapability();
+      setBiometricCapability(capability);
+      setBiometricEnabledState(await isDeviceAuthEnabled(user.id || user.username));
+    } catch {
+      setBiometricEnabledState(false);
+    }
     return user;
   };
 

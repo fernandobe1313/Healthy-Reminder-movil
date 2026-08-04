@@ -1,10 +1,11 @@
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 
-const ENABLED_KEY_PREFIX = 'hr_device_auth_enabled:';
+const ENABLED_KEY_PREFIX = 'hr_device_auth_enabled_';
 
 function preferenceKey(userId) {
-  return `${ENABLED_KEY_PREFIX}${String(userId || 'default')}`;
+  const safeUserId = String(userId || 'default').replace(/[^A-Za-z0-9._-]/g, '_');
+  return `${ENABLED_KEY_PREFIX}${safeUserId}`;
 }
 
 export async function getDeviceAuthCapability() {

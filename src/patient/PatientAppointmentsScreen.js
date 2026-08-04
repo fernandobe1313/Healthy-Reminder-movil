@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { colors } from '../theme/palette';
 import { patientServices } from '../data/patient-services';
@@ -37,6 +38,7 @@ function appointmentMoment(item) {
 }
 
 export function PatientAppointmentsScreen() {
+  const insets = useSafeAreaInsets();
   const state = useAppState();
   const [filter, setFilter] = useState('Próximas');
   const [modal, setModal] = useState(null);
@@ -213,9 +215,15 @@ export function PatientAppointmentsScreen() {
         )}
       </ScrollView>
 
-      <Modal visible={Boolean(modal)} transparent animationType="slide" onRequestClose={() => setModal(null)}>
-        <View style={s.modalRoot}>
-          <ScrollView contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" contentContainerStyle={[s.modalCard, { backgroundColor: state.theme.surface }]}>
+      <Modal visible={Boolean(modal)} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setModal(null)}>
+        <KeyboardAvoidingView style={s.modalRoot} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <ScrollView
+            style={{ width: '100%', maxHeight: '92%' }}
+            contentInsetAdjustmentBehavior="never"
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={[s.modalCard, { backgroundColor: state.theme.surface, paddingBottom: Math.max(28, insets.bottom + 18) }]}
+          >
             <View style={s.between}>
               <Text selectable style={[s.sectionTitle, { color: state.theme.text }]}>
                 {modal?.type === 'detail' ? 'Detalle de la cita' : modal?.type === 'reschedule' ? 'Reprogramar cita' : 'Solicitar cita'}
@@ -303,7 +311,7 @@ export function PatientAppointmentsScreen() {
                   <Text style={{ color: colors.purple, fontSize: 18 }}>⏰</Text>
                 </Pressable>
                 <Text selectable style={[s.fieldLabel, { color: state.theme.text }]}>Motivo o comentario</Text>
-                <TextInput value={form.reason} onChangeText={(reason) => setForm((prev) => ({ ...prev, reason }))} multiline placeholder="Cuéntanos brevemente qué necesitas" placeholderTextColor={state.theme.soft} style={[s.field, { minHeight: 90, paddingTop: 14, color: state.theme.text, backgroundColor: state.theme.input, borderColor: state.theme.line }]} />
+                <TextInput value={form.reason} onChangeText={(reason) => setForm((prev) => ({ ...prev, reason: reason.slice(0, 500) }))} maxLength={500} multiline placeholder="Cuéntanos brevemente qué necesitas" placeholderTextColor={state.theme.soft} style={[s.field, { minHeight: 90, paddingTop: 14, color: state.theme.text, backgroundColor: state.theme.input, borderColor: state.theme.line }]} />
                 <Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>
                   {modal?.type === 'reschedule'
                     ? 'Esto solo enviará una solicitud. Tu cita actual no cambiará hasta que el dentista la apruebe.'
@@ -323,7 +331,7 @@ export function PatientAppointmentsScreen() {
               </>
             )}
           </ScrollView>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={Boolean(pickerMode)} transparent animationType="fade" onRequestClose={() => setPickerMode(null)}>
@@ -337,6 +345,9 @@ export function PatientAppointmentsScreen() {
                 value={pickerValue(form, pickerMode)}
                 mode={pickerMode}
                 display={pickerMode === 'date' && Platform.OS === 'ios' ? 'inline' : pickerMode === 'time' && Platform.OS === 'ios' ? 'spinner' : 'default'}
+                themeVariant={state.theme.name === 'dark' ? 'dark' : 'light'}
+                textColor={state.theme.text}
+                accentColor={colors.blue}
                 minimumDate={pickerMode === 'date' ? new Date() : undefined}
                 minuteInterval={5}
                 onChange={(event, value) => {
@@ -372,6 +383,7 @@ export function PatientAppointmentsScreen() {
             <TextInput
               value={serviceQuery}
               onChangeText={setServiceQuery}
+              maxLength={100}
               placeholder="Buscar por nombre o categoría..."
               placeholderTextColor={state.theme.soft}
               style={[s.field, { color: state.theme.text, backgroundColor: state.theme.input, borderColor: state.theme.line }]}

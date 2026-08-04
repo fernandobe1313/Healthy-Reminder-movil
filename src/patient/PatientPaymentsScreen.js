@@ -151,11 +151,6 @@ export function PatientPaymentsScreen() {
           </Pressable>
         )) : <EmptyState title="Sin movimientos" copy="Los cobros y abonos registrados por la clínica aparecerán aquí." theme={state.theme} />}
 
-        <View style={[s.card, { backgroundColor: `${colors.blue}10`, borderColor: `${colors.blue}35` }]}>
-          <Text selectable style={[s.cardTitle, { color: state.theme.text }]}>Pagos en línea</Text>
-          <Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>La interfaz está preparada. La clínica deberá conectar una pasarela segura antes de aceptar tarjetas.</Text>
-          <PrimaryButton disabled label="Próximamente" onPress={() => {}} />
-        </View>
       </ScrollView>
 
       <Modal visible={Boolean(detail)} transparent animationType="slide" onRequestClose={() => setDetail(null)}>

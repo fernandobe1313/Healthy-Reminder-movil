@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import { colors } from '../theme/palette';
 import { conditions } from '../data/mock-data';
 import { styles } from '../styles';
@@ -14,6 +16,19 @@ const lowerTeeth = ['48', '47', '46', '45', '44', '43', '42', '41', '31', '32', 
 const molars = ['18', '17', '16', '26', '27', '28', '48', '47', '46', '36', '37', '38'];
 const premolars = ['15', '14', '24', '25', '45', '44', '34', '35'];
 const canines = ['13', '23', '43', '33'];
+
+const escapeHtml = (value = '') => String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+
+function documentLines(document) {
+  if (document.type === 'Receta') return (document.items || []).map((item, index) => `${index + 1}. ${item.medication || 'Medicamento'}${item.dosage ? ` · ${item.dosage}` : ''}${item.frequency ? ` · ${item.frequency}` : ''}${item.duration ? ` · ${item.duration}` : ''}${item.instructions ? ` · ${item.instructions}` : ''}`);
+  if (document.type === 'Presupuesto') return (document.items || []).map((item, index) => `${index + 1}. ${item.service_name || item.description || 'Procedimiento'}${item.tooth_number ? ` · Pieza ${item.tooth_number}` : ''} · $${Number(item.total_price || item.price || 0).toLocaleString('es-MX')}`);
+  return document.content ? [document.content] : [document.detail];
+}
+
+function documentHtml(document, patientName) {
+  const lines = documentLines(document);
+  return `<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;color:#172033;padding:38px}h1{color:#2563eb;font-size:24px;margin-bottom:4px}.meta{color:#64748b;font-size:12px}.box{margin-top:22px;padding:18px;border:1px solid #dbe4f0;border-radius:12px}.line{padding:10px 0;border-bottom:1px solid #edf2f7}.footer{margin-top:35px;color:#64748b;font-size:11px}</style></head><body><h1>${escapeHtml(document.type)}</h1><h2>${escapeHtml(document.title)}</h2><p class="meta">Paciente: ${escapeHtml(patientName)} · Fecha: ${escapeHtml(document.date)} · Estado: ${escapeHtml(document.status)}</p>${document.diagnosis ? `<p><strong>Diagnóstico:</strong> ${escapeHtml(document.diagnosis)}</p>` : ''}<div class="box">${lines.map(line => `<div class="line">${escapeHtml(line)}</div>`).join('')}</div>${document.notes ? `<p><strong>Notas:</strong> ${escapeHtml(document.notes)}</p>` : ''}${document.type === 'Presupuesto' ? `<h3>Total: $${Number(document.total || 0).toLocaleString('es-MX')} MXN</h3>` : ''}<p class="footer">Documento generado desde HealthyReminder Dental.</p></body></html>`;
+}
 
 function conditionFor(value) {
   const id = typeof value === 'string' ? value : value?.condition;
@@ -53,10 +68,34 @@ function PatientTooth({ tooth, arch, entry, theme }) {
 export function PatientHealthScreen() {
   const state = useAppState();
   const [tab, setTab] = useState('Tratamiento');
+  const [selectedDocument, setSelectedDocument] = useState(null);
+  const [sharingDocumentId, setSharingDocumentId] = useState('');
   const plan = state.treatmentPlans.find((item) => item.patient_id === state.currentPatientId);
   const records = state.clinicalRecords.filter((item) => item.patient_id === state.currentPatientId && item.visible !== false);
   const toothMap = state.odontogramByPatient[state.currentPatientId] || {};
   const documents = state.patientDocuments.filter((item) => item.patient_id === state.currentPatientId);
+
+  const shareDocument = async (document) => {
+    if (sharingDocumentId) return;
+    setSharingDocumentId(document.id);
+    try {
+      if (!(await Sharing.isAvailableAsync())) throw new Error('Compartir archivos no está disponible en este dispositivo.');
+      const patientName = state.currentPatient?.name || state.currentUser?.full_name || 'Paciente';
+      const file = await Print.printToFileAsync({ html: documentHtml(document, patientName), base64: false });
+      await Sharing.shareAsync(file.uri, { mimeType: 'application/pdf', dialogTitle: `Compartir ${document.type}`, UTI: 'com.adobe.pdf' });
+    } catch (error) {
+      state.notify(error.message || 'No fue posible compartir el documento');
+    } finally {
+      setSharingDocumentId('');
+    }
+  };
+
+  useEffect(() => {
+    if (tab !== 'Odontograma') return undefined;
+    state.refreshPatientOdontogram().catch(() => {});
+    const interval = setInterval(() => state.refreshPatientOdontogram().catch(() => {}), 5000);
+    return () => clearInterval(interval);
+  }, [tab, state.currentPatientId]);
 
   return (
     <ScrollView contentInsetAdjustmentBehavior="automatic" showsVerticalScrollIndicator={false} contentContainerStyle={s.content}>
@@ -180,14 +219,32 @@ export function PatientHealthScreen() {
               <Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>{item.detail}</Text>
               <View style={s.between}>
                 <StatusChip label={item.status} tone={toneForStatus(item.status)} />
-                <Pressable onPress={() => state.notify('Documento preparado para compartir')}>
-                  <Text style={{ color: colors.blue, fontWeight: '850' }}>Compartir</Text>
-                </Pressable>
+                <View style={{ flexDirection: 'row', gap: 18 }}>
+                  <Pressable onPress={() => setSelectedDocument(item)}><Text style={{ color: colors.purple, fontWeight: '850' }}>Ver detalle</Text></Pressable>
+                  <Pressable disabled={Boolean(sharingDocumentId)} onPress={() => shareDocument(item)}><Text style={{ color: colors.blue, fontWeight: '850', opacity: sharingDocumentId ? 0.55 : 1 }}>{sharingDocumentId === item.id ? 'Preparando...' : 'Compartir PDF'}</Text></Pressable>
+                </View>
               </View>
             </View>
           )) : <EmptyState title="Sin documentos" copy="Recetas, consentimientos y presupuestos aparecerán aquí." theme={state.theme} />}
         </>
       ) : null}
+      <Modal visible={Boolean(selectedDocument)} transparent animationType="slide" onRequestClose={() => setSelectedDocument(null)}>
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,23,42,0.58)' }}>
+          <View style={{ maxHeight: '88%', borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: 22, backgroundColor: state.theme.card, borderColor: state.theme.line, borderWidth: 1 }}>
+            <View style={[s.between, { marginBottom: 14 }]}>
+              <View style={{ flex: 1, paddingRight: 12 }}><Text selectable style={[s.eyebrow, { color: colors.blue }]}>{selectedDocument?.type}</Text><Text selectable style={[s.title, { color: state.theme.text }]}>{selectedDocument?.title}</Text></View>
+              <Pressable onPress={() => setSelectedDocument(null)} style={{ padding: 10 }}><Text style={{ color: state.theme.muted, fontWeight: '900' }}>Cerrar</Text></Pressable>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingBottom: 18 }}>
+              <View style={[s.card, { backgroundColor: state.theme.input, borderColor: state.theme.line }]}><Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>Fecha: {selectedDocument?.date || 'Sin fecha'}</Text><Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>Estado: {selectedDocument?.status || 'Sin estado'}</Text>{selectedDocument?.diagnosis ? <Text selectable style={[s.cardCopy, { color: state.theme.text }]}>Diagnóstico: {selectedDocument.diagnosis}</Text> : null}</View>
+              {(selectedDocument ? documentLines(selectedDocument) : []).map((line, index) => <View key={`${selectedDocument?.id}-${index}`} style={[s.card, { backgroundColor: state.theme.card, borderColor: state.theme.line }]}><Text selectable style={[s.cardCopy, { color: state.theme.text }]}>{line}</Text></View>)}
+              {selectedDocument?.notes ? <View style={[s.card, { backgroundColor: state.theme.input, borderColor: state.theme.line }]}><Text selectable style={[s.cardTitle, { color: state.theme.text }]}>Notas</Text><Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>{selectedDocument.notes}</Text></View> : null}
+              {selectedDocument?.type === 'Presupuesto' ? <Text selectable style={[s.title, { color: colors.amber, textAlign: 'right' }]}>Total: {money(selectedDocument.total || 0)}</Text> : null}
+              <Pressable disabled={Boolean(sharingDocumentId)} onPress={() => shareDocument(selectedDocument)} style={{ padding: 15, borderRadius: 14, alignItems: 'center', backgroundColor: colors.blue }}><Text style={{ color: '#fff', fontWeight: '900' }}>{sharingDocumentId ? 'Preparando PDF...' : 'Compartir como PDF'}</Text></Pressable>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }

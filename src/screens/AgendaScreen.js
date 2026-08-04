@@ -139,6 +139,8 @@ export function AgendaScreen({ theme, appointments, selectedDay, setSelectedDay,
             value={parsedActiveDate}
             mode="date"
             display={Platform.OS === 'ios' ? 'inline' : 'calendar'}
+            themeVariant={theme.name === 'dark' ? 'dark' : 'light'}
+            accentColor={colors.blue}
             onChange={(event, date) => {
               if (date) selectDate(date);
               if (Platform.OS === 'android') setCalendarOpen(false);

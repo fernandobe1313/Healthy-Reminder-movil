@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { styles } from '../styles';
 import { colors } from '../theme/palette';
@@ -129,6 +129,8 @@ function DateField({ theme, label, value, error, onChange }) {
             value={parseSelectedDate(value || toStoredDate(new Date()))}
             mode="date"
             display={Platform.OS === 'ios' ? 'inline' : 'calendar'}
+            themeVariant={theme.name === 'dark' ? 'dark' : 'light'}
+            accentColor={colors.blue}
             minimumDate={new Date(2020, 0, 1)}
             onChange={(event, date) => {
               if (date) onChange(toStoredDate(date));
@@ -174,6 +176,9 @@ function TimeField({ theme, label, value, error, onChange }) {
             value={parseTime(value || '09:00')}
             mode="time"
             display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            themeVariant={theme.name === 'dark' ? 'dark' : 'light'}
+            textColor={theme.text}
+            accentColor={colors.purple}
             minuteInterval={5}
             onChange={(event, date) => {
               if (date) onChange(toStoredTime(date));
@@ -203,7 +208,8 @@ function SearchableOptionSheet({ theme, selector, onClose }) {
   }, [query, selector]);
 
   return (
-    <Modal visible={Boolean(selector)} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={Boolean(selector)} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+      <KeyboardAvoidingView style={styles.modalRoot} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Pressable style={styles.selectorBackdrop} onPress={onClose} />
       <View style={[styles.selectorSheet, { backgroundColor: theme.surface, borderColor: theme.line }]}>
         <View style={[styles.sheetGrabber, { backgroundColor: theme.line }]} />
@@ -218,6 +224,7 @@ function SearchableOptionSheet({ theme, selector, onClose }) {
           <TextInput
             value={query}
             onChangeText={setQuery}
+            maxLength={100}
             placeholder="Buscar..."
             placeholderTextColor={theme.soft}
             style={[styles.searchInput, { color: theme.text }]}
@@ -251,6 +258,7 @@ function SearchableOptionSheet({ theme, selector, onClose }) {
           )}
         </ScrollView>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

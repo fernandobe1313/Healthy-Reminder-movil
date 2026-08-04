@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { conditions } from '../data/mock-data';
 import { colors } from '../theme/palette';
 import { styles } from '../styles';
@@ -147,7 +147,8 @@ function PatientSelector({ theme, patients, selectedPatient, onSelect }) {
         <Text style={[styles.selectChevron, { color: theme.muted }]}>v</Text>
       </Pressable>
 
-      <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
+      <Modal visible={open} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setOpen(false)}>
+        <KeyboardAvoidingView style={styles.modalRoot} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <Pressable style={styles.selectorBackdrop} onPress={() => setOpen(false)} />
         <View style={[styles.selectorSheet, { backgroundColor: theme.surface, borderColor: theme.line }]}>
           <View style={[styles.sheetGrabber, { backgroundColor: theme.line }]} />
@@ -162,6 +163,7 @@ function PatientSelector({ theme, patients, selectedPatient, onSelect }) {
             <TextInput
               value={query}
               onChangeText={setQuery}
+              maxLength={100}
               placeholder="Buscar paciente..."
               placeholderTextColor={theme.soft}
               style={[styles.searchInput, { color: theme.text }]}
@@ -190,6 +192,7 @@ function PatientSelector({ theme, patients, selectedPatient, onSelect }) {
             ))}
           </ScrollView>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
     </>
   );
@@ -223,7 +226,10 @@ export function ClinicalScreen({
   }, [selectedPatientId, selectedTooth, selectedCondition.id, selectedEntry?.note]);
 
   useEffect(() => {
-    if (selectedPatientId) loadOdontogram(selectedPatientId);
+    if (!selectedPatientId) return undefined;
+    loadOdontogram(selectedPatientId);
+    const interval = setInterval(() => loadOdontogram(selectedPatientId), 5000);
+    return () => clearInterval(interval);
   }, [selectedPatientId]);
 
   const applyCondition = (conditionId) => {
@@ -378,7 +384,8 @@ export function ClinicalScreen({
         <TextInput
           multiline
           value={note}
-          onChangeText={setNote}
+          onChangeText={(value) => setNote(value.slice(0, 2000))}
+          maxLength={2000}
           editable={Boolean(selectedPatient)}
           placeholder="Describe diagnostico, tratamiento realizado, superficies afectadas o seguimiento..."
           placeholderTextColor={theme.soft}

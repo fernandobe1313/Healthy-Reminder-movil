@@ -1,16 +1,19 @@
 import React, { useEffect, useState } from 'react';
-import { Linking, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { Linking, Modal, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { colors } from '../theme/palette';
 import { useAppState } from '../navigation/AppStateContext';
 import { resources } from '../api/resources';
 import { OutlineButton, PrimaryButton, SectionTitle } from './patient-components';
 import { patientStyles as s } from './patient-ui';
 
-function Field({ label, value, onChangeText, theme, editable = true, secureTextEntry = false }) {
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
+const phoneDigits = (value = '') => String(value).replace(/\D/g, '');
+
+function Field({ label, value, onChangeText, theme, editable = true, secureTextEntry = false, keyboardType, maxLength = 255 }) {
   return (
     <View style={{ gap: 7 }}>
       <Text selectable style={[s.fieldLabel, { color: theme.text }]}>{label}</Text>
-      <TextInput editable={editable} secureTextEntry={secureTextEntry} value={String(value || '')} onChangeText={onChangeText} placeholderTextColor={theme.soft} style={[s.field, { color: theme.text, backgroundColor: theme.input, borderColor: theme.line, opacity: editable ? 1 : 0.65 }]} />
+      <TextInput editable={editable} secureTextEntry={secureTextEntry} value={String(value || '')} onChangeText={(next) => onChangeText?.(next.slice(0, maxLength))} keyboardType={keyboardType} maxLength={maxLength} placeholderTextColor={theme.soft} style={[s.field, { color: theme.text, backgroundColor: theme.input, borderColor: theme.line, opacity: editable ? 1 : 0.65 }]} />
     </View>
   );
 }
@@ -21,15 +24,22 @@ export function PatientProfileScreen() {
   const [form, setForm] = useState({ ...state.currentPatient });
   const [passwordRequest, setPasswordRequest] = useState(null);
   const [requestReason, setRequestReason] = useState('');
-  const [passwords, setPasswords] = useState({ current: '', next: '', confirm: '' });
   const [passwordBusy, setPasswordBusy] = useState(false);
+  const [privacyOpen, setPrivacyOpen] = useState(false);
+  const [dataRequest, setDataRequest] = useState(null);
+  const [dataRequestBusy, setDataRequestBusy] = useState(false);
   const prefs = state.patientPreferences;
 
   useEffect(() => setForm({ ...state.currentPatient }), [state.currentPatient]);
 
   useEffect(() => {
     if (section !== 'Avisos') return;
-    resources.myPasswordChangeRequest().then(setPasswordRequest).catch((error) => state.notify(error.message));
+    Promise.all([resources.myPasswordChangeRequest(), resources.myDataRequest()])
+      .then(([password, personalData]) => {
+        setPasswordRequest(password);
+        setDataRequest(personalData);
+      })
+      .catch((error) => state.notify(error.message));
   }, [section]);
 
   const requestPasswordChange = async () => {
@@ -42,31 +52,35 @@ export function PatientProfileScreen() {
     finally { setPasswordBusy(false); }
   };
 
-  const completePasswordChange = async () => {
-    if (!passwords.current || passwords.next.length < 8 || !/[A-Za-z]/.test(passwords.next) || !/\d/.test(passwords.next) || passwords.next !== passwords.confirm) {
-      state.notify('La contraseña debe coincidir y tener 8 caracteres, una letra y un número');
-      return;
-    }
-    setPasswordBusy(true);
+  const requestPersonalData = async () => {
+    setDataRequestBusy(true);
     try {
-      await resources.changePassword({ current_password: passwords.current, new_password: passwords.next });
-      setPasswords({ current: '', next: '', confirm: '' });
-      setPasswordRequest(await resources.myPasswordChangeRequest());
-      state.notify('Contraseña actualizada');
+      setDataRequest(await resources.requestMyData());
+      state.notify('Solicitud enviada al administrador');
     } catch (error) { state.notify(error.message); }
-    finally { setPasswordBusy(false); }
+    finally { setDataRequestBusy(false); }
   };
 
   const save = async () => {
+    const email = String(form.email || '').trim();
+    const phone = phoneDigits(form.phone);
+    if (email && !EMAIL_PATTERN.test(email)) {
+      state.notify('Ingresa un correo electrónico válido');
+      return;
+    }
+    if (phone && (phone.length < 8 || phone.length > 15)) {
+      state.notify('El teléfono debe contener entre 8 y 15 dígitos');
+      return;
+    }
     try {
-      await state.updateCurrentPatient(form);
+      await state.updateCurrentPatient({ ...form, email: email.toLowerCase() });
     } catch {
       // El contexto ya muestra el error del backend.
     }
   };
 
   return (
-    <ScrollView contentInsetAdjustmentBehavior="automatic" showsVerticalScrollIndicator={false} contentContainerStyle={s.content}>
+    <ScrollView contentInsetAdjustmentBehavior="automatic" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'} keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={s.content}>
       <View style={[s.hero, { backgroundColor: state.theme.card, borderColor: state.theme.line }]}>
         <View style={[s.row, { alignItems: 'center' }]}>
           <View style={{ width: 62, height: 62, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: `${colors.blue}18` }}>
@@ -91,7 +105,7 @@ export function PatientProfileScreen() {
           <View style={[s.card, { backgroundColor: state.theme.card, borderColor: state.theme.line }]}>
             <Field label="Nombre completo" value={form.name} onChangeText={(name) => setForm((prev) => ({ ...prev, name }))} theme={state.theme} />
             <Field label="Teléfono" value={form.phone} onChangeText={(phone) => setForm((prev) => ({ ...prev, phone }))} theme={state.theme} />
-            <Field label="Correo electrónico" value={form.email || 'alan@paciente.com'} onChangeText={(email) => setForm((prev) => ({ ...prev, email }))} theme={state.theme} />
+            <Field label="Correo electrónico" value={form.email || 'alan@paciente.com'} onChangeText={(email) => setForm((prev) => ({ ...prev, email }))} keyboardType="email-address" maxLength={160} theme={state.theme} />
             <Field label="Contacto de emergencia" value={form.emergency_contact_name || 'Laura Ramírez'} onChangeText={(emergency_contact_name) => setForm((prev) => ({ ...prev, emergency_contact_name }))} theme={state.theme} />
             <PrimaryButton label="Guardar cambios" onPress={save} />
           </View>
@@ -138,17 +152,13 @@ export function PatientProfileScreen() {
           <SectionTitle theme={state.theme}>Seguridad de la cuenta</SectionTitle>
           <View style={[s.card, { backgroundColor: state.theme.card, borderColor: state.theme.line }]}>
             <Text selectable style={[s.cardTitle, { color: state.theme.text }]}>Cambio de contraseña supervisado</Text>
-            <Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>Para proteger tu expediente clínico, el administrador debe aprobar la solicitud antes del cambio.</Text>
+            <Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>Envía una solicitud. Por seguridad, solo el administrador puede establecer una nueva contraseña para tu cuenta.</Text>
             {passwordRequest?.status === 'pendiente' ? (
               <Text selectable style={[s.cardCopy, { color: colors.amber }]}>Solicitud pendiente de revisión por el administrador.</Text>
             ) : passwordRequest?.status === 'aprobada' ? (
-              <>
-                <Text selectable style={[s.cardCopy, { color: colors.green }]}>Solicitud aprobada. Puedes cambiarla durante las próximas 72 horas.</Text>
-                <Field label="Contraseña actual" value={passwords.current} onChangeText={(current) => setPasswords((prev) => ({ ...prev, current }))} theme={state.theme} secureTextEntry />
-                <Field label="Nueva contraseña" value={passwords.next} onChangeText={(next) => setPasswords((prev) => ({ ...prev, next }))} theme={state.theme} secureTextEntry />
-                <Field label="Confirmar contraseña" value={passwords.confirm} onChangeText={(confirm) => setPasswords((prev) => ({ ...prev, confirm }))} theme={state.theme} secureTextEntry />
-                <PrimaryButton label={passwordBusy ? 'Actualizando...' : 'Cambiar contraseña'} onPress={completePasswordChange} />
-              </>
+              <Text selectable style={[s.cardCopy, { color: colors.green }]}>Solicitud aprobada. El administrador establecerá la nueva contraseña y te la comunicará por un medio seguro.</Text>
+            ) : passwordRequest?.status === 'completada' ? (
+              <Text selectable style={[s.cardCopy, { color: colors.green }]}>El administrador completó el cambio. Usa la contraseña que te proporcionó para tu siguiente inicio de sesión.</Text>
             ) : (
               <>
                 {passwordRequest?.status === 'rechazada' ? <Text selectable style={[s.cardCopy, { color: colors.red }]}>La solicitud anterior fue rechazada. Puedes enviar una nueva.</Text> : null}
@@ -157,8 +167,14 @@ export function PatientProfileScreen() {
               </>
             )}
           </View>
-          <OutlineButton label="Aviso de privacidad" theme={state.theme} onPress={() => state.notify('Aviso de privacidad abierto')} />
-          <OutlineButton label="Solicitar mis datos" theme={state.theme} onPress={() => state.notify('Solicitud registrada')} />
+          <OutlineButton label="Aviso de privacidad" theme={state.theme} onPress={() => setPrivacyOpen(true)} />
+          <OutlineButton
+            label={dataRequest?.status === 'pendiente' ? 'Solicitud de datos pendiente' : dataRequestBusy ? 'Enviando solicitud...' : 'Solicitar mis datos'}
+            theme={state.theme}
+            onPress={requestPersonalData}
+            disabled={dataRequestBusy || dataRequest?.status === 'pendiente'}
+          />
+          {dataRequest ? <Text selectable style={[s.cardCopy, { color: state.theme.muted, textAlign: 'center' }]}>Estado de la solicitud: {dataRequest.status}</Text> : null}
         </>
       ) : null}
 
@@ -227,6 +243,21 @@ export function PatientProfileScreen() {
       ) : null}
 
       <OutlineButton label="Cerrar sesión" theme={state.theme} tone={colors.red} onPress={state.logout} />
+
+      <Modal visible={privacyOpen} transparent animationType="slide" onRequestClose={() => setPrivacyOpen(false)}>
+        <View style={s.modalRoot}>
+          <ScrollView contentContainerStyle={[s.modalCard, { backgroundColor: state.theme.surface }]}>
+            <View style={s.between}>
+              <Text selectable style={[s.sectionTitle, { color: state.theme.text, flex: 1 }]}>Aviso de privacidad</Text>
+              <Pressable onPress={() => setPrivacyOpen(false)}><Text style={{ color: state.theme.muted, fontSize: 24 }}>×</Text></Pressable>
+            </View>
+            <Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>HealthyReminder Dental y la clínica responsable tratan tus datos de identificación, contacto, salud, citas y pagos para integrar tu expediente, prestar atención dental, administrar citas y cumplir obligaciones legales.</Text>
+            <Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>Tus datos no se venden. Solo se comparten con personal autorizado, proveedores necesarios para operar el servicio o autoridades cuando exista una obligación legal. Se aplican controles de acceso, cifrado y registro de actividad.</Text>
+            <Text selectable style={[s.cardCopy, { color: state.theme.muted }]}>Puedes solicitar acceso, rectificación, cancelación u oposición mediante el botón “Solicitar mis datos” o contactando directamente a tu clínica. La clínica validará tu identidad antes de entregar información.</Text>
+            <PrimaryButton label="Entendido" onPress={() => setPrivacyOpen(false)} />
+          </ScrollView>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }

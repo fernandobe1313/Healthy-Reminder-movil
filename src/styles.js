@@ -1951,6 +1951,7 @@ export const styles = StyleSheet.create({
   },
   modalRoot: {
     flex: 1,
+    justifyContent: 'flex-end',
   },
   navItem: {
     flex: 1,
@@ -1978,10 +1979,7 @@ export const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.35)',
   },
   sheet: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
+    width: '100%',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     borderWidth: 1,
@@ -2010,7 +2008,7 @@ export const styles = StyleSheet.create({
     fontWeight: '900',
   },
   sheetScroll: {
-    flexGrow: 0,
+    flexShrink: 1,
   },
   sheetScrollContent: {
     gap: 15,
@@ -2167,11 +2165,8 @@ export const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.45)',
   },
   selectorSheet: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    maxHeight: '76%',
+    width: '100%',
+    maxHeight: '84%',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     borderWidth: 1,

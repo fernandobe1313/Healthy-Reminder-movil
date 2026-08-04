@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Image, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { Country, State } from 'country-state-city';
@@ -187,6 +187,8 @@ function DateField({ theme, value, error, onChange }) {
             value={selectedDate}
             mode="date"
             display={Platform.OS === 'ios' ? 'inline' : 'calendar'}
+            themeVariant={theme.name === 'dark' ? 'dark' : 'light'}
+            accentColor={colors.blue}
             maximumDate={new Date()}
             onChange={(event, date) => {
               if (date) onChange(toStoredDate(date));
@@ -309,7 +311,8 @@ function SearchableOptionSheet({ theme, selector, onClose }) {
   }, [query, selector]);
 
   return (
-    <Modal visible={Boolean(selector)} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={Boolean(selector)} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+      <KeyboardAvoidingView style={styles.modalRoot} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Pressable style={styles.selectorBackdrop} onPress={onClose} />
       <View style={[styles.selectorSheet, { backgroundColor: theme.surface, borderColor: theme.line }]}>
         <View style={[styles.sheetGrabber, { backgroundColor: theme.line }]} />
@@ -324,6 +327,7 @@ function SearchableOptionSheet({ theme, selector, onClose }) {
           <TextInput
             value={query}
             onChangeText={setQuery}
+            maxLength={100}
             placeholder="Buscar..."
             placeholderTextColor={theme.soft}
             style={[styles.searchInput, { color: theme.text }]}
@@ -357,6 +361,7 @@ function SearchableOptionSheet({ theme, selector, onClose }) {
           )}
         </ScrollView>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -447,12 +452,12 @@ export function PatientForm({ theme, form, updateForm, errors, notify }) {
 
       <View style={styles.formSection}>
         <SectionTitle theme={theme}>Datos personales</SectionTitle>
-        <Input label="Nombre *" value={form.first_name} error={errors.first_name} onChangeText={(value) => updateForm('first_name', formatPersonName(value))} theme={theme} icon="A" placeholder="Ej. Maria" autoCapitalize="words" />
-        <Input label="Apellido paterno *" value={form.last_name_paternal} error={errors.last_name_paternal} onChangeText={(value) => updateForm('last_name_paternal', formatPersonName(value))} theme={theme} icon="P" placeholder="Lopez" autoCapitalize="words" />
-        <Input label="Apellido materno" value={form.last_name_maternal} onChangeText={(value) => updateForm('last_name_maternal', formatPersonName(value))} theme={theme} icon="M" placeholder="Garcia" autoCapitalize="words" />
+        <Input label="Nombre *" value={form.first_name} error={errors.first_name} onChangeText={(value) => updateForm('first_name', formatPersonName(value))} theme={theme} icon="A" placeholder="Ej. Maria" autoCapitalize="words" sanitize="letters" maxLength={80} />
+        <Input label="Apellido paterno *" value={form.last_name_paternal} error={errors.last_name_paternal} onChangeText={(value) => updateForm('last_name_paternal', formatPersonName(value))} theme={theme} icon="P" placeholder="Lopez" autoCapitalize="words" sanitize="letters" maxLength={80} />
+        <Input label="Apellido materno" value={form.last_name_maternal} error={errors.last_name_maternal} onChangeText={(value) => updateForm('last_name_maternal', formatPersonName(value))} theme={theme} icon="M" placeholder="Garcia" autoCapitalize="words" sanitize="letters" maxLength={80} />
         <Text selectable style={[styles.inputLabel, { color: theme.text }]}>Genero</Text>
         <ChoiceRow theme={theme} form={form} field="gender" options={['Femenino', 'Masculino', 'Otro']} updateForm={updateForm} />
-        <DateField theme={theme} value={form.birth_date} onChange={(value) => updateForm('birth_date', value)} />
+        <DateField theme={theme} value={form.birth_date} error={errors.birth_date} onChange={(value) => updateForm('birth_date', value)} />
         <Input label="CURP" value={form.curp} error={errors.curp} onChangeText={(value) => updateForm('curp', formatCode(value))} theme={theme} icon="C" placeholder="CURP" autoCapitalize="characters" maxLength={18} />
         <Input label="RFC" value={form.rfc} error={errors.rfc} onChangeText={(value) => updateForm('rfc', formatCode(value))} theme={theme} icon="R" placeholder="RFC" autoCapitalize="characters" maxLength={13} />
         <SelectField label="Ocupacion" value={form.occupation === 'Otro' && form.occupation_other ? form.occupation_other : form.occupation} placeholder="Seleccionar ocupacion" theme={theme} icon="O" onPress={openOccupationSelector} />
@@ -465,9 +470,9 @@ export function PatientForm({ theme, form, updateForm, errors, notify }) {
 
       <View style={styles.formSection}>
         <SectionTitle theme={theme}>Contacto</SectionTitle>
-        <Input label="Telefono principal" value={form.phone_primary} error={errors.phone_primary} onChangeText={(value) => updateForm('phone_primary', value)} theme={theme} icon={form.country_phone_code || '#'} placeholder={`${form.country_phone_code || '+52'} 55 0000 0000`} keyboardType="phone-pad" maxLength={22} />
+        <Input label="Telefono principal" value={form.phone_primary} error={errors.phone_primary} onChangeText={(value) => updateForm('phone_primary', value)} theme={theme} icon={form.country_phone_code || '#'} placeholder={`${form.country_phone_code || '+52'} 55 0000 0000`} keyboardType="phone-pad" sanitize="phone" maxLength={22} />
         <Input label="Telefono secundario" value={form.phone_secondary} error={errors.phone_secondary} onChangeText={(value) => updateForm('phone_secondary', value)} theme={theme} icon={form.country_phone_code || '#'} placeholder={`${form.country_phone_code || '+52'} 55 0000 0000`} keyboardType="phone-pad" maxLength={22} />
-        <Input label="Correo electronico" value={form.email} error={errors.email} onChangeText={(value) => updateForm('email', value.trim())} theme={theme} icon="@" placeholder="paciente@email.com" keyboardType="email-address" autoCapitalize="none" />
+        <Input label="Correo electronico" value={form.email} error={errors.email} onChangeText={(value) => updateForm('email', value.trim())} theme={theme} icon="@" placeholder="paciente@email.com" keyboardType="email-address" autoCapitalize="none" maxLength={160} />
       </View>
 
       <View style={styles.formSection}>
@@ -483,7 +488,7 @@ export function PatientForm({ theme, form, updateForm, errors, notify }) {
         ) : (
           <Input label="Estado" value={form.state} onChangeText={(value) => updateForm('state', value)} theme={theme} icon="E" placeholder="Estado o provincia" autoCapitalize="words" />
         )}
-        <Input label="Codigo postal" value={form.zip_code} onChangeText={(value) => updateForm('zip_code', value)} theme={theme} icon="#" placeholder="00000" keyboardType="number-pad" />
+        <Input label="Codigo postal" value={form.zip_code} error={errors.zip_code} onChangeText={(value) => updateForm('zip_code', value)} theme={theme} icon="#" placeholder="00000" keyboardType="number-pad" sanitize="digits" maxLength={5} />
       </View>
 
       <View style={styles.formSection}>

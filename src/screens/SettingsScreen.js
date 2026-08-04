@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Image, Modal, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Country } from 'country-state-city';
 import { colors } from '../theme/palette';
@@ -9,6 +9,8 @@ import { useVisualEffects } from '../theme/visual-effects';
 import { resources } from '../api/resources';
 
 const defaultLogo = require('../../assets/logoHR.png');
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
+const digits = (value = '') => String(value).replace(/\D/g, '');
 
 const tabs = [
   { id: 'clinic', label: 'Consultorio', icon: 'C' },
@@ -47,7 +49,8 @@ function SearchableOptionSheet({ theme, selector, onClose }) {
   }, [query, selector]);
 
   return (
-    <Modal visible={Boolean(selector)} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={Boolean(selector)} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+      <KeyboardAvoidingView style={styles.modalRoot} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Pressable style={styles.selectorBackdrop} onPress={onClose} />
       <View style={[styles.selectorSheet, { backgroundColor: theme.surface, borderColor: theme.line }]}>
         <View style={[styles.sheetGrabber, { backgroundColor: theme.line }]} />
@@ -62,6 +65,7 @@ function SearchableOptionSheet({ theme, selector, onClose }) {
           <TextInput
             value={query}
             onChangeText={setQuery}
+            maxLength={100}
             placeholder="Buscar..."
             placeholderTextColor={theme.soft}
             style={[styles.searchInput, { color: theme.text }]}
@@ -95,6 +99,7 @@ function SearchableOptionSheet({ theme, selector, onClose }) {
           )}
         </ScrollView>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -183,8 +188,8 @@ export function SettingsScreen({ theme, themeMode, setThemeMode, onLogout, notif
   };
 
   const completePasswordChange = async () => {
-    if (!passwords.current || passwords.next.length < 8 || !/[A-Za-z]/.test(passwords.next) || !/\d/.test(passwords.next) || passwords.next !== passwords.confirm) {
-      notify?.('La contraseña debe coincidir y tener 8 caracteres, una letra y un número');
+    if (!passwords.current || passwords.next.length < 12 || !/[A-Za-z]/.test(passwords.next) || !/\d/.test(passwords.next) || !/[^A-Za-z0-9]/.test(passwords.next) || passwords.next !== passwords.confirm) {
+      notify?.('La contraseña debe coincidir y tener 12 caracteres, una letra, un número y un símbolo');
       return;
     }
     setPasswordBusy(true);
@@ -263,6 +268,22 @@ export function SettingsScreen({ theme, themeMode, setThemeMode, onLogout, notif
   const saveConfig = async (message) => {
     if (!clinic.name.trim()) {
       notify?.('El nombre del consultorio es obligatorio');
+      return;
+    }
+    if (clinic.email.trim() && !EMAIL_PATTERN.test(clinic.email.trim())) {
+      notify?.('Ingresa un correo electrónico válido');
+      return;
+    }
+    if (clinic.phone.trim() && (digits(clinic.phone).length < 8 || digits(clinic.phone).length > 15)) {
+      notify?.('El teléfono debe contener entre 8 y 15 dígitos');
+      return;
+    }
+    if (clinic.zip.trim() && digits(clinic.zip).length !== 5) {
+      notify?.('El código postal debe tener 5 dígitos');
+      return;
+    }
+    if (!/^[A-Z]{3}$/.test(clinic.currency.trim())) {
+      notify?.('La moneda debe tener un código de 3 letras, por ejemplo MXN');
       return;
     }
     setSaving(true);
@@ -396,8 +417,8 @@ export function SettingsScreen({ theme, themeMode, setThemeMode, onLogout, notif
       <View style={styles.formSection}>
         <Input label="Nombre del consultorio" value={clinic.name} onChangeText={(value) => updateClinic('name', value)} theme={theme} icon="N" placeholder="Nombre del consultorio" />
         <Input label="Responsable / dueno" value={clinic.owner} onChangeText={(value) => updateClinic('owner', value)} theme={theme} icon="D" placeholder="Responsable" />
-        <Input label="Telefono" value={clinic.phone} onChangeText={(value) => updateClinic('phone', value)} theme={theme} icon="#" placeholder="442-000-0000" keyboardType="phone-pad" />
-        <Input label="Correo electronico" value={clinic.email} onChangeText={(value) => updateClinic('email', value)} theme={theme} icon="@" placeholder="correo@clinica.com" keyboardType="email-address" autoCapitalize="none" />
+        <Input label="Telefono" value={clinic.phone} onChangeText={(value) => updateClinic('phone', value)} theme={theme} icon="#" placeholder="442-000-0000" keyboardType="phone-pad" sanitize="phone" maxLength={22} />
+        <Input label="Correo electronico" value={clinic.email} onChangeText={(value) => updateClinic('email', value)} theme={theme} icon="@" placeholder="correo@clinica.com" keyboardType="email-address" autoCapitalize="none" maxLength={160} />
       </View>
 
       <View style={styles.formSection}>
@@ -416,7 +437,7 @@ export function SettingsScreen({ theme, themeMode, setThemeMode, onLogout, notif
           <SelectField label="Pais" value={`${Country.getCountryByCode(clinic.countryCode)?.flag || ''} ${clinic.country}`} meta={clinic.countryCode} placeholder="Seleccionar pais" theme={theme} icon="P" onPress={openCountrySelector} />,
           <Input label="Moneda" value={clinic.currency} onChangeText={(value) => updateClinic('currency', value.toUpperCase().slice(0, 3))} theme={theme} icon="$" placeholder="MXN" maxLength={3} />
         )}
-        <Input label="Codigo postal" value={clinic.zip} onChangeText={(value) => updateClinic('zip', value)} theme={theme} icon="#" placeholder="00000" keyboardType="number-pad" />
+        <Input label="Codigo postal" value={clinic.zip} onChangeText={(value) => updateClinic('zip', value)} theme={theme} icon="#" placeholder="00000" keyboardType="number-pad" sanitize="digits" maxLength={10} />
       </View>
 
       <View style={styles.formSection}>
@@ -496,7 +517,7 @@ export function SettingsScreen({ theme, themeMode, setThemeMode, onLogout, notif
   );
 
   return (
-    <ScrollView contentInsetAdjustmentBehavior="automatic" showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+    <ScrollView contentInsetAdjustmentBehavior="automatic" automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'} keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
       <View style={[styles.settingsHero, compact && styles.settingsHeroCompact]}>
         <View style={styles.settingsHeaderText}>
           <LedText selectable style={styles.heroEyebrow}>Configuracion</LedText>

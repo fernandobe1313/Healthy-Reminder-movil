@@ -149,7 +149,20 @@ export function HeaderButton({ label, onPress, theme, active }) {
   );
 }
 
-export function Input({ label, theme, icon, rightLabel, onRightPress, inputStyle, shellStyle, multiline, error, ...props }) {
+export function Input({ label, theme, icon, rightLabel, onRightPress, inputStyle, shellStyle, multiline, error, maxLength, keyboardType, onChangeText, sanitize, ...props }) {
+  const effectiveMaxLength = maxLength || (multiline ? 2000 : 255);
+  const handleChangeText = React.useCallback((rawValue) => {
+    let value = String(rawValue ?? '');
+    if (sanitize === 'digits' || keyboardType === 'number-pad' || keyboardType === 'numeric') value = value.replace(/\D/g, '');
+    if (sanitize === 'decimal' || keyboardType === 'decimal-pad') {
+      value = value.replace(',', '.').replace(/[^0-9.]/g, '');
+      const [whole = '', ...parts] = value.split('.');
+      value = parts.length ? `${whole}.${parts.join('').slice(0, 2)}` : whole;
+    }
+    if (sanitize === 'letters') value = value.replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ' -]/g, '');
+    if (sanitize === 'phone' || keyboardType === 'phone-pad') value = value.replace(/[^0-9+() -]/g, '');
+    onChangeText?.(value.slice(0, effectiveMaxLength));
+  }, [effectiveMaxLength, keyboardType, onChangeText, sanitize]);
   return (
     <View style={styles.inputGroup}>
       <Text selectable style={[styles.inputLabel, { color: theme.text }]}>{label}</Text>
@@ -160,6 +173,12 @@ export function Input({ label, theme, icon, rightLabel, onRightPress, inputStyle
           style={[styles.input, multiline && styles.inputMultiline, { color: theme.text }, inputStyle]}
           autoCapitalize="none"
           multiline={multiline}
+          maxLength={effectiveMaxLength}
+          keyboardType={keyboardType}
+          onChangeText={handleChangeText}
+          returnKeyType={multiline ? 'default' : 'next'}
+          blurOnSubmit={!multiline}
+          textAlignVertical={multiline ? 'top' : 'center'}
           {...props}
         />
         {rightLabel ? (

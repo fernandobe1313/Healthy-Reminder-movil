@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { styles } from '../styles';
 import { colors } from '../theme/palette';
@@ -89,6 +89,8 @@ function DateField({ theme, value, error, onChange }) {
             value={parseSelectedDate(value || toStoredDate(new Date()))}
             mode="date"
             display={Platform.OS === 'ios' ? 'inline' : 'calendar'}
+            themeVariant={theme.name === 'dark' ? 'dark' : 'light'}
+            accentColor={colors.blue}
             onChange={(event, date) => {
               if (date) onChange(toStoredDate(date));
               if (Platform.OS === 'android') setOpen(false);
@@ -117,7 +119,8 @@ function SearchableOptionSheet({ theme, selector, onClose }) {
   }, [query, selector]);
 
   return (
-    <Modal visible={Boolean(selector)} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={Boolean(selector)} transparent animationType="slide" statusBarTranslucent onRequestClose={onClose}>
+      <KeyboardAvoidingView style={styles.modalRoot} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Pressable style={styles.selectorBackdrop} onPress={onClose} />
       <View style={[styles.selectorSheet, { backgroundColor: theme.surface, borderColor: theme.line }]}>
         <View style={[styles.sheetGrabber, { backgroundColor: theme.line }]} />
@@ -132,6 +135,7 @@ function SearchableOptionSheet({ theme, selector, onClose }) {
           <TextInput
             value={query}
             onChangeText={setQuery}
+            maxLength={100}
             placeholder="Buscar..."
             placeholderTextColor={theme.soft}
             style={[styles.searchInput, { color: theme.text }]}
@@ -165,6 +169,7 @@ function SearchableOptionSheet({ theme, selector, onClose }) {
           )}
         </ScrollView>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -221,8 +226,8 @@ export function PaymentForm({ theme, form, updateForm, errors, patients = [] }) 
             })
           }
         />
-        <Input label="Monto total *" value={form.total_amount} error={errors.total_amount} onChangeText={(value) => updateForm('total_amount', value)} theme={theme} icon="$" placeholder="0" keyboardType="decimal-pad" />
-        <Input label="Monto pagado" value={form.paid_amount} error={errors.paid_amount} onChangeText={(value) => updateForm('paid_amount', value)} theme={theme} icon="$" placeholder="0" keyboardType="decimal-pad" />
+        <Input label="Monto total *" value={form.total_amount} error={errors.total_amount} onChangeText={(value) => updateForm('total_amount', value)} theme={theme} icon="$" placeholder="0" keyboardType="decimal-pad" sanitize="decimal" maxLength={12} />
+        <Input label="Monto pagado" value={form.paid_amount} error={errors.paid_amount} onChangeText={(value) => updateForm('paid_amount', value)} theme={theme} icon="$" placeholder="0" keyboardType="decimal-pad" sanitize="decimal" maxLength={12} />
         <View style={[styles.paymentSummaryBand, { backgroundColor: theme.input, borderColor: theme.line }]}>
           <View>
             <Text selectable style={[styles.recordLabel, { color: theme.muted }]}>Pendiente</Text>
@@ -272,7 +277,7 @@ export function PaymentInstallmentForm({ theme, form, updateForm, errors }) {
     <>
       <View style={styles.formSection}>
         <SectionTitle theme={theme}>Abono</SectionTitle>
-        <Input label="Monto del abono *" value={form.amount} error={errors.amount} onChangeText={(value) => updateForm('amount', value)} theme={theme} icon="$" placeholder="0" keyboardType="decimal-pad" />
+        <Input label="Monto del abono *" value={form.amount} error={errors.amount} onChangeText={(value) => updateForm('amount', value)} theme={theme} icon="$" placeholder="0" keyboardType="decimal-pad" sanitize="decimal" maxLength={12} />
         <SelectField
           label="Metodo"
           value={form.method}

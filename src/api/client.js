@@ -2,7 +2,7 @@ import { fetch } from 'expo/fetch';
 import { session } from './session';
 
 const configuredBase = process.env.EXPO_PUBLIC_API_URL
-  || 'https://healthy-reminder-backend.onrender.com/api/v1';
+  || 'https://api.healthyreminderdental.com/api/v1';
 export const API_BASE_URL = configuredBase.replace(/\/+$/, '');
 
 export class ApiError extends Error {

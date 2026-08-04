@@ -316,6 +316,7 @@ export function AppStateProvider({ children }) {
     })));
     const prescriptions = (clinicalSummary.prescriptions || []).map((prescription) => ({
       id: `prescription-${prescription.id}`,
+      source_id: prescription.id,
       patient_id: patientId,
       type: 'Receta',
       title: prescription.diagnosis || 'Receta médica',
@@ -323,24 +324,36 @@ export function AppStateProvider({ children }) {
       detail: (prescription.items || []).map((item) => (
         `${item.medication}${item.dosage ? ` ${item.dosage}` : ''}${item.frequency ? `, ${item.frequency}` : ''}`
       )).join(' · ') || prescription.notes || 'Indicaciones disponibles en tu expediente.',
+      diagnosis: prescription.diagnosis || '',
+      notes: prescription.notes || '',
+      doctor_name: prescription.doctor_name || '',
+      items: prescription.items || [],
       status: 'Vigente',
     }));
     const budgets = (clinicalSummary.treatment_plans || []).map((plan) => ({
       id: `plan-${plan.id}`,
+      source_id: plan.id,
       patient_id: patientId,
       type: 'Presupuesto',
       title: plan.plan_name,
       date: String(plan.created_at || '').slice(0, 10),
       detail: `Total estimado $${Number(plan.total || 0).toLocaleString('es-MX')} MXN.`,
+      diagnosis: plan.diagnosis || '',
+      notes: plan.notes || '',
+      total: Number(plan.total || 0),
+      items: plan.items || [],
       status: toUiStatus(plan.status),
     }));
     const consents = (clinicalSummary.consents || []).map((consent) => ({
       id: `consent-${consent.id}`,
+      source_id: consent.id,
       patient_id: patientId,
       type: 'Consentimiento',
       title: consent.title,
       date: String(consent.signed_at || consent.created_at || '').slice(0, 10),
       detail: consent.signed_at ? 'Documento aceptado digitalmente.' : 'Pendiente de firma.',
+      content: consent.content || '',
+      signed_at: consent.signed_at || '',
       status: toUiStatus(consent.status),
     }));
     setPatientDocuments([...prescriptions, ...budgets, ...consents]);
@@ -391,6 +404,7 @@ export function AppStateProvider({ children }) {
         syncing = false;
       }
     };
+    sync();
     const interval = setInterval(sync, 15000);
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') sync();
@@ -925,6 +939,20 @@ export function AppStateProvider({ children }) {
     }
   };
 
+  const refreshPatientOdontogram = async () => {
+    if (!currentPatientId) return;
+    try {
+      const result = await api.get('/me/odontogram');
+      const toothMap = {};
+      for (const entry of result.data || []) {
+        toothMap[String(entry.tooth_number)] = entry;
+      }
+      setOdontogramByPatient((prev) => ({ ...prev, [currentPatientId]: toothMap }));
+    } catch (error) {
+      notify(error.message);
+    }
+  };
+
   const saveOdontogramEntry = async (patientId, tooth, condition, note = '') => {
     const existing = odontogramByPatient[patientId]?.[String(tooth)];
     try {
@@ -938,6 +966,7 @@ export function AppStateProvider({ children }) {
           [String(tooth)]: { id: saved.id, condition: saved.condition, note: saved.description || '', updatedAt: saved.updated_at || saved.created_at },
         },
       }));
+      await loadOdontogram(patientId);
       notify(`Pieza ${tooth} registrada`);
       return saved;
     } catch (error) {
@@ -955,6 +984,7 @@ export function AppStateProvider({ children }) {
         delete patientMap[String(tooth)];
         return { ...prev, [patientId]: patientMap };
       });
+      await loadOdontogram(patientId);
       notify(`Registro de pieza ${tooth} eliminado`);
     } catch (error) {
       notify(error.message);
@@ -1075,6 +1105,7 @@ export function AppStateProvider({ children }) {
     odontogramByPatient,
     setOdontogramByPatient,
     loadOdontogram,
+    refreshPatientOdontogram,
     saveOdontogramEntry,
     deleteOdontogramEntry,
     clinicalRecords,

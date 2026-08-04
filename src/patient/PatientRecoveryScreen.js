@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Image, Modal, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { colors } from '../theme/palette';
 import { LedText } from '../components/common';
@@ -21,6 +22,7 @@ const defaultResponse = {
 };
 
 export function PatientRecoveryScreen() {
+  const insets = useSafeAreaInsets();
   const state = useAppState();
   const [modal, setModal] = useState(null);
   const [response, setResponse] = useState(defaultResponse);
@@ -134,8 +136,8 @@ export function PatientRecoveryScreen() {
         ) : null}
       </ScrollView>
 
-      <Modal visible={Boolean(modal)} transparent animationType="slide" onRequestClose={() => setModal(null)}>
-        <View style={s.modalRoot}>
+      <Modal visible={Boolean(modal)} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setModal(null)}>
+        <KeyboardAvoidingView style={s.modalRoot} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={{ width: '100%', maxHeight: '92%', backgroundColor: state.theme.surface, borderTopLeftRadius: 30, borderTopRightRadius: 30, overflow: 'hidden' }}>
             <ScrollView
               style={{ width: '100%' }}
@@ -143,7 +145,8 @@ export function PatientRecoveryScreen() {
               showsVerticalScrollIndicator
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
-              contentContainerStyle={{ padding: 20, paddingBottom: 28, gap: 16 }}>
+              contentInsetAdjustmentBehavior="never"
+              contentContainerStyle={{ padding: 20, paddingBottom: Math.max(28, insets.bottom + 18), gap: 16 }}>
               <View style={s.between}>
                 <Text selectable style={[s.sectionTitle, { color: state.theme.text }]}>{modal?.type === 'result' ? 'Reporte enviado' : '¿Cómo te sientes?'}</Text>
                 <Pressable onPress={() => setModal(null)}><Text style={{ color: state.theme.muted, fontSize: 22 }}>×</Text></Pressable>
@@ -177,7 +180,7 @@ export function PatientRecoveryScreen() {
                     <Switch value={response[key]} onValueChange={(value) => setResponse((prev) => ({ ...prev, [key]: value }))} trackColor={{ false: state.theme.line, true: `${colors.blue}80` }} thumbColor={response[key] ? colors.blue : '#fff'} />
                   </View>
                 ))}
-                <TextInput value={response.comment} onChangeText={(comment) => setResponse((prev) => ({ ...prev, comment }))} multiline placeholder="Describe cualquier molestia o cambio..." placeholderTextColor={state.theme.soft} style={[s.field, { minHeight: 90, paddingTop: 14, color: state.theme.text, backgroundColor: state.theme.input, borderColor: state.theme.line }]} />
+                <TextInput value={response.comment} onChangeText={(comment) => setResponse((prev) => ({ ...prev, comment: comment.slice(0, 1000) }))} maxLength={1000} multiline placeholder="Describe cualquier molestia o cambio..." placeholderTextColor={state.theme.soft} style={[s.field, { minHeight: 90, paddingTop: 14, color: state.theme.text, backgroundColor: state.theme.input, borderColor: state.theme.line }]} />
                 {response.photoUri ? <Image source={{ uri: response.photoUri }} style={{ width: '100%', height: 220, borderRadius: 20 }} resizeMode="cover" /> : null}
                 <View style={s.row}>
                   <OutlineButton label="Tomar foto" theme={state.theme} onPress={() => pickPhoto('camera')} style={{ flex: 1 }} />
@@ -192,7 +195,7 @@ export function PatientRecoveryScreen() {
               </View>
             ) : null}
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </>
   );

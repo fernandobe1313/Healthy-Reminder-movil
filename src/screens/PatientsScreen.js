@@ -25,6 +25,7 @@ export function PatientsScreen({ theme, patients, search, setSearch, setSheet })
           <TextInput
             value={search}
             onChangeText={setSearch}
+            maxLength={100}
             placeholder="Buscar paciente..."
             placeholderTextColor={theme.soft}
             style={[styles.searchInput, { color: theme.text }]}

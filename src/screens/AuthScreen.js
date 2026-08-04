@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, Animated, Image, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, Animated, Image, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/palette';
@@ -37,6 +37,8 @@ export function AuthScreen({ theme, setThemeMode, onEnter }) {
 
       <ScrollView
         contentInsetAdjustmentBehavior="automatic"
+        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[
@@ -92,13 +94,15 @@ export function AuthScreen({ theme, setThemeMode, onEnter }) {
             ))}
           </View>
 
-          <Input label="Usuario o correo" value={email} onChangeText={setEmail} theme={theme} icon="@" />
+          <Input label="Usuario o correo" value={email} onChangeText={setEmail} theme={theme} icon="@" maxLength={160} autoCapitalize="none" autoComplete="email" keyboardType="email-address" />
           <Input
             label="Contrasena"
             value={password}
             onChangeText={setPassword}
             theme={theme}
             icon="#"
+            maxLength={128}
+            autoComplete="current-password"
             secureTextEntry={!showPassword}
             rightLabel={showPassword ? 'Ocultar' : 'Ver'}
             onRightPress={() => setShowPassword((prev) => !prev)}

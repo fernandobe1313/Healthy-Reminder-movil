@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Image, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { colors } from '../theme/palette';
 import { LedText } from '../components/common';
 import { EmptyState, OutlineButton, PrimaryButton, SectionTitle, StatusChip, toneForStatus } from '../patient/patient-components';
@@ -77,9 +77,15 @@ export function FollowUpsScreen({ theme, patients, followUps, onCreate, onReview
         }) : <EmptyState title="Sin seguimientos" copy="No hay registros para este filtro." theme={theme} />}
       </ScrollView>
 
-      <Modal visible={Boolean(modal)} transparent animationType="slide" onRequestClose={() => setModal(null)}>
-        <View style={s.modalRoot}>
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[s.modalCard, { backgroundColor: theme.surface }]}>
+      <Modal visible={Boolean(modal)} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setModal(null)}>
+        <KeyboardAvoidingView style={s.modalRoot} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
+          <ScrollView
+            style={{ width: '100%', maxHeight: '92%' }}
+            contentInsetAdjustmentBehavior="never"
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            contentContainerStyle={[s.modalCard, { backgroundColor: theme.surface }]}
+          >
             <View style={s.between}>
               <Text selectable style={[s.sectionTitle, { color: theme.text }]}>{modal?.type === 'new' ? 'Nuevo seguimiento' : 'Revisar seguimiento'}</Text>
               <Pressable onPress={() => setModal(null)}><Text style={{ color: theme.muted, fontSize: 22 }}>×</Text></Pressable>
@@ -103,7 +109,7 @@ export function FollowUpsScreen({ theme, patients, followUps, onCreate, onReview
                 ].map(([label, key]) => (
                   <View key={key} style={{ gap: 7 }}>
                     <Text selectable style={[s.fieldLabel, { color: theme.text }]}>{label}</Text>
-                    <TextInput multiline={key === 'instructions'} value={String(form[key])} onChangeText={(value) => setForm((prev) => ({ ...prev, [key]: value }))} style={[s.field, key === 'instructions' && { minHeight: 84, paddingTop: 13 }, { color: theme.text, backgroundColor: theme.input, borderColor: theme.line }]} />
+                    <TextInput multiline={key === 'instructions'} value={String(form[key])} onChangeText={(value) => setForm((prev) => ({ ...prev, [key]: value.slice(0, key === 'instructions' ? 2000 : 160) }))} maxLength={key === 'instructions' ? 2000 : 160} style={[s.field, key === 'instructions' && { minHeight: 84, paddingTop: 13 }, { color: theme.text, backgroundColor: theme.input, borderColor: theme.line }]} />
                   </View>
                 ))}
                 <PrimaryButton label="Programar y notificar" onPress={() => { onCreate(form); setModal(null); }} />
@@ -132,7 +138,7 @@ export function FollowUpsScreen({ theme, patients, followUps, onCreate, onReview
               </>
             ) : null}
           </ScrollView>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </>
   );

@@ -134,6 +134,13 @@ const validatePhone = (value = '', dialCode = '') => {
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
 const curpPattern = /^[A-Z\u00D1]{4}\d{6}[HM][A-Z\u00D1]{5}[A-Z0-9]\d$/;
 const rfcPattern = /^[A-Z\u00D1&]{3,4}\d{6}[A-Z0-9]{3}$/;
+const personNamePattern = /^[A-Za-z\u00C0-\u00FF\u00D1\u00F1' -]+$/;
+const improbableNamePattern = /(?:[bcdfghjklmnpqrstvwxyzñ]{5}|qwerty|asdf|zxcv|123|(.)\1\1)/i;
+const isValidPersonName = (value, required = true) => {
+  const name = String(value || '').trim().replace(/\s+/g, ' ');
+  if (!name) return !required;
+  return name.length >= 2 && name.length <= 80 && personNamePattern.test(name) && !improbableNamePattern.test(name);
+};
 
 const parseMoney = (value = 0) => Number(String(value || '').replace(/[^0-9.]/g, '')) || 0;
 
@@ -229,12 +236,18 @@ export function ActionSheet({ theme, sheet, patients, onClose, onAddPatient, onU
 
     if (!form.first_name?.trim()) nextErrors.first_name = 'El nombre es obligatorio.';
     if (!form.last_name_paternal?.trim()) nextErrors.last_name_paternal = 'El apellido paterno es obligatorio.';
+    if (form.first_name?.trim() && !isValidPersonName(form.first_name)) nextErrors.first_name = 'Escribe un nombre válido de 2 a 80 caracteres.';
+    if (form.last_name_paternal?.trim() && !isValidPersonName(form.last_name_paternal)) nextErrors.last_name_paternal = 'Escribe un apellido válido de 2 a 80 caracteres.';
+    if (form.last_name_maternal?.trim() && !isValidPersonName(form.last_name_maternal, false)) nextErrors.last_name_maternal = 'Escribe un apellido válido de 2 a 80 caracteres.';
     if (curp && (!curpPattern.test(curp) || curp.length !== 18)) nextErrors.curp = 'La CURP debe tener 18 caracteres y formato valido.';
     if (rfc && (!rfcPattern.test(rfc) || ![12, 13].includes(rfc.length))) nextErrors.rfc = 'El RFC debe tener 12 o 13 caracteres y formato valido.';
     if (primaryPhoneError) nextErrors.phone_primary = primaryPhoneError;
     if (secondaryPhoneError) nextErrors.phone_secondary = secondaryPhoneError;
     if (emergencyPhoneError) nextErrors.emergency_contact_phone = emergencyPhoneError;
     if (email && !emailPattern.test(email)) nextErrors.email = 'Ingresa un correo electronico valido.';
+    if (email && email.length > 160) nextErrors.email = 'El correo no puede exceder 160 caracteres.';
+    if (form.birth_date && new Date(`${form.birth_date}T00:00:00`) > new Date()) nextErrors.birth_date = 'La fecha de nacimiento no puede estar en el futuro.';
+    if (form.zip_code && onlyDigits(form.zip_code).length !== 5) nextErrors.zip_code = 'El codigo postal debe tener 5 digitos.';
     setErrors(nextErrors);
 
     if (Object.keys(nextErrors).length) {
@@ -255,6 +268,8 @@ export function ActionSheet({ theme, sheet, patients, onClose, onAddPatient, onU
     if (!start?.trim()) nextErrors.start_time = 'Selecciona la hora de inicio.';
     if (duration <= 0) nextErrors.duration = 'La duracion debe ser mayor a 0.';
     if (duration > 480) nextErrors.duration = 'La duración máxima es de 480 minutos.';
+    if (form.observations?.length > 2000) nextErrors.observations = 'Las observaciones no pueden exceder 2000 caracteres.';
+    if (form.internal_notes?.length > 2000) nextErrors.internal_notes = 'Las notas internas no pueden exceder 2000 caracteres.';
     if (form.end_time && start && form.end_time <= start) nextErrors.end_time = 'La hora fin debe ser posterior al inicio.';
     const scheduled = new Date(`${form.date}T${start}:00`);
     if (form.date && start && (Number.isNaN(scheduled.valueOf()) || scheduled <= new Date())) nextErrors.date = 'La cita debe programarse en una fecha y hora futuras.';
@@ -276,6 +291,8 @@ export function ActionSheet({ theme, sheet, patients, onClose, onAddPatient, onU
     if (paid < 0) nextErrors.paid_amount = 'El monto pagado no puede ser negativo.';
     if (paid > total) nextErrors.paid_amount = 'El monto pagado no puede superar el total.';
     if (String(form.method).toLocaleLowerCase('es-MX') === 'transferencia' && !form.reference?.trim()) nextErrors.reference = 'Agrega la referencia de la transferencia.';
+    if (form.reference?.length > 100) nextErrors.reference = 'La referencia no puede exceder 100 caracteres.';
+    if (form.notes?.length > 2000) nextErrors.notes = 'Las notas no pueden exceder 2000 caracteres.';
 
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) {
@@ -392,9 +409,13 @@ export function ActionSheet({ theme, sheet, patients, onClose, onAddPatient, onU
   };
 
   return (
-    <Modal visible={Boolean(sheet)} animationType="slide" transparent onRequestClose={onClose}>
-      <KeyboardAvoidingView style={styles.modalRoot} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Pressable style={styles.modalBackdrop} onPress={onClose} />
+    <Modal visible={Boolean(sheet)} animationType="slide" transparent statusBarTranslucent onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        style={styles.modalRoot}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={0}
+      >
+        <Pressable style={[styles.modalBackdrop, { position: 'absolute', inset: 0 }]} onPress={onClose} />
         <View
           style={[
             styles.sheet,
@@ -413,7 +434,7 @@ export function ActionSheet({ theme, sheet, patients, onClose, onAddPatient, onU
           </View>
 
           {sheet?.type === 'patientRecord' ? (
-          <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetScrollContent} showsVerticalScrollIndicator={false}>
+          <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetScrollContent} showsVerticalScrollIndicator={false} contentInsetAdjustmentBehavior="automatic">
             <PatientRecord patient={sheet.data} theme={theme} />
             <GradientButton label="Cerrar expediente" onPress={onClose} right="" />
           </ScrollView>
@@ -625,7 +646,14 @@ export function ActionSheet({ theme, sheet, patients, onClose, onAddPatient, onU
             <GradientButton label="Cerrar detalle" onPress={onClose} right="" />
           </ScrollView>
         ) : sheet?.type === 'patient' || sheet?.type === 'patientEdit' || sheet?.type === 'appointment' || sheet?.type === 'payment' || sheet?.type === 'paymentInstallment' || sheet?.type === 'reminder' ? (
-          <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetScrollContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            style={styles.sheetScroll}
+            contentContainerStyle={[styles.sheetScrollContent, { paddingBottom: Math.max(20, insets.bottom + 10) }]}
+            showsVerticalScrollIndicator
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            contentInsetAdjustmentBehavior="never"
+          >
             {renderEditableFields()}
             <GradientButton
               label={sheet?.type === 'appointment' ? 'Crear cita' : sheet?.type === 'patientEdit' ? 'Guardar cambios' : sheet?.type === 'payment' ? 'Registrar pago' : sheet?.type === 'paymentInstallment' ? 'Registrar abono' : sheet?.type === 'reminder' ? 'Crear recordatorio' : 'Guardar paciente'}
